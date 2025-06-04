@@ -14,7 +14,7 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = "7604409638:AAEGdpRVT135IT0_q9x6XTwO-EpoJK6fXRw"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -209,6 +209,22 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     save_balances(balances)
     await msg.reply_text(f"{recipient} лишился {amount} {currency} {CURRENCIES[currency]}")
+async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if msg.from_user.username != ADMIN_USERNAME:
+        return
+
+    try:
+        with open(BALANCE_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+            # Telegram ограничивает 4096 символов на сообщение
+            if len(content) <= 4096:
+                await msg.reply_text(f"```json\n{content}\n```", parse_mode="Markdown")
+            else:
+                # Если слишком длинный — отправим как файл
+                await msg.reply_document(document=open(BALANCE_FILE, 'rb'))
+    except Exception as e:
+        await msg.reply_text(f"Ошибка при чтении баланса: {e}")
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -224,6 +240,9 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_give_admin(update, context)
     elif text.startswith("отнять"):
         await handle_take_admin(update, context)
+    elif text.startswith("сохранение"):
+        await handle_save_admin(update, context)
+
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
