@@ -264,44 +264,38 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
 
     # Загрузка текущих билетов
     lottery = load_lottery()
-
-    # Преобразуем в список, сохраняем порядок
     ordered = list(lottery.items())
 
-    # Найдём текущую позицию пользователя (если есть)
+    # Найдём текущего пользователя и его количество билетов
     current_index = next((i for i, (user, _) in enumerate(ordered) if user == username), None)
+    previous_tickets = 0
 
     if current_index is not None:
-        # Если пользователь уже есть — увеличиваем его билеты
-        old_range = ordered[current_index][1]
-        new_count = (old_range[1] - old_range[0] + 1) + count
-        ordered[current_index] = (username, [0, 0])  # временно нули, позже пересчитаем
+        prev_range = ordered[current_index][1]
+        previous_tickets = prev_range[1] - prev_range[0] + 1
+        ordered[current_index] = (username, [0, 0])  # временно
     else:
-        # Новый пользователь
         ordered.append((username, [0, 0]))
         current_index = len(ordered) - 1
 
-    # Перерасчёт диапазонов заново — слева направо
+    total_tickets = previous_tickets + count
+
+    # Пересчитываем все диапазоны заново
     current_number = 1
     for i, (user, rng) in enumerate(ordered):
-        if i == current_index:
-            ticket_count = count if rng == [0, 0] else (rng[1] - rng[0] + 1)
-            new_range = [current_number, current_number + ticket_count - 1]
-            ordered[i] = (username, new_range)
+        if user == username:
+            new_range = [current_number, current_number + total_tickets - 1]
         else:
             ticket_count = rng[1] - rng[0] + 1
             new_range = [current_number, current_number + ticket_count - 1]
-            ordered[i] = (user, new_range)
-
+        ordered[i] = (user, new_range)
         current_number = new_range[1] + 1
 
-    # Сохраняем обратно в словарь
     updated_lottery = {user: rng for user, rng in ordered}
     save_lottery(updated_lottery)
 
     user_range = updated_lottery[username]
     await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪")
-
 
 async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from pprint import pformat  # для более читаемого вывода
@@ -323,6 +317,25 @@ async def handle_clear_lottery(update: Update, context: ContextTypes.DEFAULT_TYP
     save_lottery({})
     await update.message.reply_text("Билеты очищены.")
 
+async def handle_average_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    balances = load_balances()
+    if not balances:
+        await update.message.reply_text("Нет данных по балансу.")
+        return
+
+    total = 0
+    count = 0
+    for user, user_balances in balances.items():
+        cookies = user_balances.get("печеньки", 0)
+        total += cookies
+        count += 1
+
+    if count == 0:
+        await update.message.reply_text("Нет пользователей с печеньками.")
+        return
+
+    average = total / count
+    await update.message.reply_text(f"Среднее количество печенек: {average:.2f} 🍪")
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -348,6 +361,8 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_show_lottery(update, context)
     elif lower_text == "очистить" and update.message.from_user.username == ADMIN_USERNAME:
         await handle_clear_lottery(update, context)
+    elif text.startswith("среднее"):
+        await handle_average_cookies(update, context)
 
 
 if __name__ == '__main__':
