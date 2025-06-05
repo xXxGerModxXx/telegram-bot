@@ -26,6 +26,17 @@ CURRENCIES = {
     "трилистники": "☘️",
     "четырёхлистники": "🍀"
 }
+LOTTERY_FILE = 'lottery.json'
+
+def load_lottery():
+    if not os.path.exists(LOTTERY_FILE):
+        return {}
+    with open(LOTTERY_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def save_lottery(data):
+    with open(LOTTERY_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 def load_balances():
     if not os.path.exists(BALANCE_FILE):
@@ -225,23 +236,77 @@ async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await msg.reply_document(document=open(BALANCE_FILE, 'rb'))
     except Exception as e:
         await msg.reply_text(f"Ошибка при чтении баланса: {e}")
+async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    username = get_username_from_message(msg)
+    text = msg.text.strip()
+
+    match = re.match(r'^N\s+(\d+)$', text, re.IGNORECASE)
+    if not match:
+        return
+
+    count = int(match.group(1))
+    if count <= 0:
+        await msg.reply_text("Количество билетов должно быть больше нуля.")
+        return
+
+    balances = load_balances()
+    user_bal = balances.get(username, {}).get("печеньки", 0)
+
+    if user_bal < count:
+        await msg.reply_text(f"Недостаточно печенек. У тебя {user_bal}, нужно {count}.")
+        return
+
+    # Вычитаем печеньки
+    balances.setdefault(username, {}).setdefault("печеньки", 0)
+    balances[username]["печеньки"] -= count
+    save_balances(balances)
+
+    # Загрузка и расчет диапазона
+    lottery = load_lottery()
+    last_max = max((v[1] for v in lottery.values()), default=0)
+    new_range = [last_max + 1, last_max + count]
+    lottery[username] = new_range
+    save_lottery(lottery)
+
+    await msg.reply_text(f"{username} купил билеты с №{new_range[0]} по №{new_range[1]} за {count} печенек 🍪")
+
+async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lottery = load_lottery()
+    if not lottery:
+        await update.message.reply_text("Нет купленных билетов.")
+        return
+    lines = [f"{user} {rng[0]}–{rng[1]}" for user, rng in lottery.items()]
+    await update.message.reply_text("\n".join(lines))
+async def handle_clear_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    save_lottery({})
+    await update.message.reply_text("Билеты очищены.")
+
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
-    text = update.message.text.strip().lower()
+    text = update.message.text.strip()
+    lower_text = text.lower()
+    username = get_username_from_message(update.message)
 
-    if text.startswith("баланс"):
+    if lower_text.startswith("баланс"):
         await handle_balance(update, context)
-    elif text.startswith("дать"):
+    elif lower_text.startswith("дать"):
         await handle_give(update, context)
-    elif text.startswith("дар"):
+    elif lower_text.startswith("дар"):
         await handle_give_admin(update, context)
-    elif text.startswith("отнять"):
+    elif lower_text.startswith("отнять"):
         await handle_take_admin(update, context)
-    elif text.startswith("сохранение"):
+    elif lower_text.startswith("сохранение"):
         await handle_save_admin(update, context)
+    elif re.match(r'^N\s+\d+$', text, re.IGNORECASE):
+        await handle_lottery_purchase(update, context)
+    elif lower_text == "показать" and update.message.from_user.username == ADMIN_USERNAME:
+        await handle_show_lottery(update, context)
+    elif lower_text == "очистить" and update.message.from_user.username == ADMIN_USERNAME:
+        await handle_clear_lottery(update, context)
 
 
 if __name__ == '__main__':
