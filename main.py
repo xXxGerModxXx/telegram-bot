@@ -1,16 +1,16 @@
-import os
 import json
+import os
 import re
 import logging
-from quart import Quart, request
 from telegram import Update, Message
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
-# Логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
+# Отключаем логи INFO для httpx (Telegram Bot API клиент)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
@@ -18,16 +18,14 @@ TOKEN = "7604409638:AAFRrmzPflnsGj_a7q2fMd99w3x_GuNJ78c"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
+# ... дальше твой код
+
+
 CURRENCIES = {
     "печеньки": "🍪",
     "трилистники": "☘️",
     "четырёхлистники": "🍀"
 }
-
-app = Quart(__name__)
-application = ApplicationBuilder().token(TOKEN).build()
-
-# --- Работа с балансами ---
 
 def load_balances():
     if not os.path.exists(BALANCE_FILE):
@@ -49,14 +47,13 @@ def get_currency_from_text(text: str) -> str:
             return curr
     return "печеньки"
 
-# --- Обработчики команд ---
-
 async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
     balances = load_balances()
     user_balances = balances.get(username, {})
     if not user_balances:
         user_balances = {curr: 0 for curr in CURRENCIES}
+    # Формируем ответ с балансом по всем валютам
     lines = [f"{username}, твой баланс:"]
     for curr, emoji in CURRENCIES.items():
         amount = user_balances.get(curr, 0)
@@ -67,6 +64,7 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     text = msg.text.strip()
 
+    # Регулярка теперь ищет: "дать N [название валюты]"
     match = re.match(r'^дать\s+(\d+)(?:\s+(печеньки|трилистника|трилистники|четырёхлистника|четырёхлистники))?', text, re.IGNORECASE)
     if not match:
         return
@@ -74,8 +72,10 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     amount = int(match.group(1))
     currency_text = match.group(2)
 
+    # Приводим к правильному ключу валюты
     if currency_text:
         currency_text = currency_text.lower()
+        # нормализуем варианты
         if currency_text in ("трилистника", "трилистники"):
             currency = "трилистники"
         elif currency_text in ("четырёхлистника", "четырёхлистники"):
@@ -86,6 +86,8 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         currency = "печеньки"
 
     recipient_tag = None
+    # Ищем получателя: либо через @, либо в ответе на сообщение
+    # Пример: "дать 10 трилистника @username"
     recipient_match = re.search(r'@(\w+)', text)
     if recipient_match:
         recipient_tag = recipient_match.group(1)
@@ -110,18 +112,20 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(f"У тебя недостаточно {currency}.")
         return
 
-    # Списываем у отправителя
-    sender_balances[currency] -= amount
+    # Списываем и начисляем
+    sender_balances[currency] = sender_balances.get(currency, 0) - amount
     balances[sender] = sender_balances
 
-    # Начисляем получателю
     recipient_balances = balances.get(recipient, {curr: 0 for curr in CURRENCIES})
-    recipient_balances[currency] += amount
+    recipient_balances[currency] = recipient_balances.get(currency, 0) + amount
     balances[recipient] = recipient_balances
 
     save_balances(balances)
 
-    await msg.reply_text(f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}.")
+    await msg.reply_text(
+        f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}.\n"
+
+    )
 
 async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -158,7 +162,7 @@ async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     recipient = f"@{recipient_tag}"
     balances = load_balances()
     recipient_balances = balances.get(recipient, {curr: 0 for curr in CURRENCIES})
-    recipient_balances[currency] += amount
+    recipient_balances[currency] = recipient_balances.get(currency, 0) + amount
     balances[recipient] = recipient_balances
 
     save_balances(balances)
@@ -193,47 +197,55 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recipient_tag = msg.reply_to_message.from_user.username
 
     if not recipient_tag:
-        await msg.reply_text("Укажи пользователя или ответь на его сообщение.")
+        await msg.reply_text("Укажи получателя или ответь на его сообщение.")
         return
 
     recipient = f"@{recipient_tag}"
     balances = load_balances()
     recipient_balances = balances.get(recipient, {curr: 0 for curr in CURRENCIES})
-    if recipient_balances.get(currency, 0) < amount:
-        await msg.reply_text(f"У пользователя недостаточно {currency} для списания.")
-        return
-    recipient_balances[currency] -= amount
+    current = recipient_balances.get(currency, 0)
+    recipient_balances[currency] = max(0, current - amount)
     balances[recipient] = recipient_balances
 
     save_balances(balances)
-    await msg.reply_text(f"У {recipient} отняли {amount} {currency} {CURRENCIES[currency]}")
+    await msg.reply_text(f"{recipient} лишился {amount} {currency} {CURRENCIES[currency]}")
+async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if msg.from_user.username != ADMIN_USERNAME:
+        return
 
-# --- Регистрируем обработчики ---
+    try:
+        with open(BALANCE_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+            # Telegram ограничивает 4096 символов на сообщение
+            if len(content) <= 4096:
+                await msg.reply_text(f"```json\n{content}\n```", parse_mode="Markdown")
+            else:
+                # Если слишком длинный — отправим как файл
+                await msg.reply_document(document=open(BALANCE_FILE, 'rb'))
+    except Exception as e:
+        await msg.reply_text(f"Ошибка при чтении баланса: {e}")
 
-application.add_handler(MessageHandler(filters.Regex(r'^баланс$'), handle_balance))
-application.add_handler(MessageHandler(filters.Regex(r'^дать\s+\d+'), handle_give))
-application.add_handler(MessageHandler(filters.Regex(r'^дар\s+\d+'), handle_give_admin))
-application.add_handler(MessageHandler(filters.Regex(r'^отнять\s+\d+'), handle_take_admin))
+async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
 
-# --- Webhook endpoints для Quart ---
+    text = update.message.text.strip().lower()
 
-@app.route(f"/{TOKEN}", methods=["POST"])
-async def webhook():
-    data = await request.get_data(as_text=True)
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
-    return "ok"
+    if text.startswith("баланс"):
+        await handle_balance(update, context)
+    elif text.startswith("дать"):
+        await handle_give(update, context)
+    elif text.startswith("дар"):
+        await handle_give_admin(update, context)
+    elif text.startswith("отнять"):
+        await handle_take_admin(update, context)
+    elif text.startswith("сохранение"):
+        await handle_save_admin(update, context)
 
-@app.route("/", methods=["GET"])
-async def index():
-    webhook_url = f"https://telegram-bot-lvlj.onrender.com/{TOKEN}"  # Замени на свой URL Render!
-    await application.bot.set_webhook(webhook_url)
-    return "Webhook установлен"
 
-# --- Запуск сервера ---
-
-if __name__ == "__main__":
-    import asyncio
-    port = int(os.environ.get("PORT", 10000))
-    asyncio.run(application.initialize())
-    app.run(host="0.0.0.0", port=port)
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))
+    print("Бот запущен...")
+    app.run_polling()
