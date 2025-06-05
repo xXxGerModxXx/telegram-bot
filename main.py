@@ -34,9 +34,18 @@ def load_lottery():
     with open(LOTTERY_FILE, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-def save_lottery(data):
+
+def save_lottery(data, allow_empty=False):
+    if not isinstance(data, dict):
+        raise ValueError("save_lottery: данные должны быть словарём.")
+
+    if len(data) == 0 and not allow_empty:
+        logging.warning("Попытка сохранить пустой список билетов. Операция сохранения отменена.")
+        return
+
     with open(LOTTERY_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 def load_balances():
     if not os.path.exists(BALANCE_FILE):
@@ -314,8 +323,13 @@ async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(f"Содержимое файла:\n{raw_text}")
 
 async def handle_clear_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    save_lottery({})
+    if get_username_from_message(update.message) != f"@{ADMIN_USERNAME}":
+        await update.message.reply_text("Эта команда только для админа.")
+        return
+
+    save_lottery({}, allow_empty=True)
     await update.message.reply_text("Билеты очищены.")
+
 
 async def handle_average_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balances = load_balances()
@@ -323,19 +337,23 @@ async def handle_average_cookies(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("Нет данных по балансу.")
         return
 
+    excluded_users = {"@hto_i_taki", "@Shittttt", "@zZardexe", "@insanemaloy"}
+
     total = 0
     count = 0
     for user, user_balances in balances.items():
+        if user in excluded_users:
+            continue
         cookies = user_balances.get("печеньки", 0)
         total += cookies
         count += 1
 
     if count == 0:
-        await update.message.reply_text("Нет пользователей с печеньками.")
+        await update.message.reply_text("Нет пользователей с печеньками (после исключения).")
         return
 
     average = total / count
-    await update.message.reply_text(f"Среднее количество печенек: {average:.2f} 🍪")
+    await update.message.reply_text(f"Среднее количество печенек (без админов): {average:.2f} 🍪")
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
