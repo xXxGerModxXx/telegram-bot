@@ -1,24 +1,36 @@
 import json
 import os
 import re
+import sys  # <-- обязательно нужен для sys.exit
 import logging
 from telegram import Update, Message
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
+# 🔐 Защита от повторного запуска
+logging.info("Бот запускается...")  # это будет выведено только при первом запуске
+
+if "RUNNING" in os.environ:
+    logging.error("Похоже, бот уже работает. Завершаем процесс.")
+    sys.exit(1)
+os.environ["RUNNING"] = "true"
+
+# ⚙️ Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# Отключаем логи INFO для httpx (Telegram Bot API клиент)
+# 📉 Отключаем лишние логи
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
+# 🔑 Конфиги
 TOKEN = "7604409638:AAFRrmzPflnsGj_a7q2fMd99w3x_GuNJ78c"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
 # ... дальше твой код
+
 
 
 CURRENCIES = {
@@ -306,9 +318,9 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     user_range = updated_lottery[username]
     await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪")
 
-async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from pprint import pformat  # для более читаемого вывода
+import json
 
+async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
     if username != f"@{ADMIN_USERNAME}":
         await update.message.reply_text("Эта команда доступна только админу.")
@@ -319,8 +331,16 @@ async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Файл с билетами пуст.")
         return
 
-    raw_text = pformat(lottery, width=80)
-    await update.message.reply_text(f"Содержимое файла:\n{raw_text}")
+    json_text = json.dumps(lottery, ensure_ascii=False, indent=2)
+
+    # Если текст длиннее лимита Telegram (4096 символов), отправим как файл
+    if len(json_text) > 4000:
+        with open("lottery_temp.json", "w", encoding="utf-8") as f:
+            f.write(json_text)
+        await update.message.reply_document(document=open("lottery_temp.json", "rb"))
+    else:
+        await update.message.reply_text(f"Содержимое файла:\n```json\n{json_text}\n```", parse_mode="Markdown")
+
 
 async def handle_clear_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if get_username_from_message(update.message) != f"@{ADMIN_USERNAME}":
@@ -379,7 +399,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_show_lottery(update, context)
     elif lower_text == "очистить" and update.message.from_user.username == ADMIN_USERNAME:
         await handle_clear_lottery(update, context)
-    elif text.startswith("среднее"):
+    elif lower_text.startswith("среднее"):
         await handle_average_cookies(update, context)
 
 
