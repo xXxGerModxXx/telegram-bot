@@ -226,7 +226,7 @@ async def webhook():
 
 @app.route("/", methods=["GET"])
 async def index():
-    webhook_url = f"https://telegram-bot-vn7y.onrender.com/{TOKEN}"  # Замени на свой URL Render!
+    webhook_url = f"https://telegram-bot-lvlj.onrender.com/{TOKEN}"  # Замени на свой URL Render!
     await application.bot.set_webhook(webhook_url)
     return "Webhook установлен"
 
