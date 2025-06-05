@@ -262,22 +262,63 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     balances[username]["печеньки"] -= count
     save_balances(balances)
 
-    # Загрузка и расчет диапазона
+    # Загрузка текущих билетов
     lottery = load_lottery()
-    last_max = max((v[1] for v in lottery.values()), default=0)
-    new_range = [last_max + 1, last_max + count]
-    lottery[username] = new_range
-    save_lottery(lottery)
 
-    await msg.reply_text(f"{username} купил билеты с №{new_range[0]} по №{new_range[1]} за {count} печенек 🍪")
+    # Преобразуем в список, сохраняем порядок
+    ordered = list(lottery.items())
+
+    # Найдём текущую позицию пользователя (если есть)
+    current_index = next((i for i, (user, _) in enumerate(ordered) if user == username), None)
+
+    if current_index is not None:
+        # Если пользователь уже есть — увеличиваем его билеты
+        old_range = ordered[current_index][1]
+        new_count = (old_range[1] - old_range[0] + 1) + count
+        ordered[current_index] = (username, [0, 0])  # временно нули, позже пересчитаем
+    else:
+        # Новый пользователь
+        ordered.append((username, [0, 0]))
+        current_index = len(ordered) - 1
+
+    # Перерасчёт диапазонов заново — слева направо
+    current_number = 1
+    for i, (user, rng) in enumerate(ordered):
+        if i == current_index:
+            ticket_count = count if rng == [0, 0] else (rng[1] - rng[0] + 1)
+            new_range = [current_number, current_number + ticket_count - 1]
+            ordered[i] = (username, new_range)
+        else:
+            ticket_count = rng[1] - rng[0] + 1
+            new_range = [current_number, current_number + ticket_count - 1]
+            ordered[i] = (user, new_range)
+
+        current_number = new_range[1] + 1
+
+    # Сохраняем обратно в словарь
+    updated_lottery = {user: rng for user, rng in ordered}
+    save_lottery(updated_lottery)
+
+    user_range = updated_lottery[username]
+    await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪")
+
 
 async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from pprint import pformat  # для более читаемого вывода
+
+    username = get_username_from_message(update.message)
+    if username != f"@{ADMIN_USERNAME}":
+        await update.message.reply_text("Эта команда доступна только админу.")
+        return
+
     lottery = load_lottery()
     if not lottery:
-        await update.message.reply_text("Нет купленных билетов.")
+        await update.message.reply_text("Файл с билетами пуст.")
         return
-    lines = [f"{user} {rng[0]}–{rng[1]}" for user, rng in lottery.items()]
-    await update.message.reply_text("\n".join(lines))
+
+    raw_text = pformat(lottery, width=80)
+    await update.message.reply_text(f"Содержимое файла:\n{raw_text}")
+
 async def handle_clear_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_lottery({})
     await update.message.reply_text("Билеты очищены.")
