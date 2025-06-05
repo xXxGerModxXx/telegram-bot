@@ -97,7 +97,8 @@ application.add_handler(MessageHandler(filters.Regex(r'^дать\s+\d+'), handle
 
 @app.route(f"/{TOKEN}", methods=["POST"])
 async def webhook():
-    data = await request.get_data(as_text=True)
+    # Исправлено: теперь получаем JSON как словарь, а не строку
+    data = await request.get_json()
     update = Update.de_json(data, application.bot)
     await application.process_update(update)
     return "ok"
