@@ -116,6 +116,7 @@ async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
+
 def save_levels_price(data):
     with open(LEVELS_PRICE_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
