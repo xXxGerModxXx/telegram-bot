@@ -451,28 +451,49 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text(f"{recipient} лишился {amount} {currency} {CURRENCIES[currency]}")
 async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
-    if msg.from_user.username != ADMIN_USERNAME:
+
+    # Если это настоящий пользователь, проверяем admin
+    if msg.from_user and msg.from_user.username != ADMIN_USERNAME:
         return
 
+    admin_chat_id = 844673891  # твой id в Telegram
+
     try:
-        # Отправка BALANCE_FILE
+        # Отправляем содержимое BALANCE_FILE
         with open(BALANCE_FILE, 'r', encoding='utf-8') as f:
             balance_content = f.read()
             if len(balance_content) <= 4096:
-                await msg.reply_text(f"📂 *Содержимое {BALANCE_FILE}*\n```json\n{balance_content}\n```", parse_mode="Markdown")
+                await context.bot.send_message(
+                    chat_id=admin_chat_id,
+                    text=f"📂 *Содержимое {BALANCE_FILE}*\n```json\n{balance_content}\n```",
+                    parse_mode="Markdown"
+                )
             else:
-                await msg.reply_document(document=open(BALANCE_FILE, 'rb'))
+                await context.bot.send_document(
+                    chat_id=admin_chat_id,
+                    document=open(BALANCE_FILE, 'rb')
+                )
 
-        # Отправка levels_price.json
+        # Отправляем содержимое levels_price.json
         with open('levels_price.json', 'r', encoding='utf-8') as f:
             levels_content = f.read()
             if len(levels_content) <= 4096:
-                await msg.reply_text(f"📊 *Цены уровней (levels_price.json)*\n```json\n{levels_content}\n```", parse_mode="Markdown")
+                await context.bot.send_message(
+                    chat_id=admin_chat_id,
+                    text=f"📊 *Цены уровней (levels_price.json)*\n```json\n{levels_content}\n```",
+                    parse_mode="Markdown"
+                )
             else:
-                await msg.reply_document(document=open('levels_price.json', 'rb'))
+                await context.bot.send_document(
+                    chat_id=admin_chat_id,
+                    document=open('levels_price.json', 'rb')
+                )
 
     except Exception as e:
-        await msg.reply_text(f"❌ Ошибка при чтении файлов: {e}")
+        await context.bot.send_message(
+            chat_id=admin_chat_id,
+            text=f"❌ Ошибка при чтении файлов: {e}"
+        )
 
 async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
