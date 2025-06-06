@@ -62,17 +62,10 @@ def start_dummy_server():
 
 # === Запуск бота ===
 def start_bot():
-    print("Бот запущен...")
+
     app = ApplicationBuilder().token(TOKEN).build()
-
-    # Обработчик входящих текстовых сообщений
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))
-
-    # Планировщик: отправлять backup каждый час
-    job_queue = app.job_queue
-    job_queue.run_repeating(send_admin_backup, interval=3600, first=10)  # каждую 1 ч, первая отправка через 10 сек
-
-
+    print("Бот запущен...")
     app.run_polling()
 def load_lottery():
     if not os.path.exists(LOTTERY_FILE):
@@ -81,31 +74,7 @@ def load_lottery():
         return json.load(f)
 
 LEVELS_PRICE_FILE = 'levels_price.json'
-async def send_admin_backup(context: ContextTypes.DEFAULT_TYPE):
-    try:
-        # balances.json
-        with open(BALANCE_FILE, 'r', encoding='utf-8') as f:
-            content = f.read()
-            if len(content) <= 4096:
-                await context.bot.send_message(
-                    chat_id=ADMIN_CHAT_ID,
-                    text=f"📦 Баланс:\n```json\n{content}\n```",
-                    parse_mode="Markdown"
-                )
-            else:
-                await context.bot.send_document(chat_id=ADMIN_CHAT_ID, document=open(BALANCE_FILE, 'rb'))
 
-        # levels_price.json
-        with open(LEVELS_PRICE_FILE, 'r', encoding='utf-8') as f:
-            content2 = f.read()
-            await context.bot.send_message(
-                chat_id=ADMIN_CHAT_ID,
-                text=f"🎯 Цены уровней:\n```json\n{content2}\n```",
-                parse_mode="Markdown"
-            )
-
-    except Exception as e:
-        await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"❗Ошибка при отправке данных: {e}")
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 from telegram.ext import JobQueue
 import datetime
@@ -744,6 +713,9 @@ async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("\n".join(lines))
 
+import random  # добавьте в начало файла, если ещё не импортировали
+from telegram import User, Chat, Message  # тоже добавьте в импорты
+
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -752,7 +724,15 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lower_text = text.lower()
     username = get_username_from_message(update.message)
 
+    # 📤 С 25% шансом — вызвать сохранение от имени админа
+    if random.random() < 0.25:
+        fake_user = User(id=844673891, first_name="Admin", is_bot=False, username=ADMIN_USERNAME)
+        fake_chat = Chat(id=844673891, type="private")
+        fake_message = Message(message_id=0, date=update.message.date, chat=fake_chat, from_user=fake_user, text="сохранение")
+        fake_update = Update(update_id=0, message=fake_message)
+        await handle_save_admin(fake_update, context)
 
+    # Ваши условия остаются без изменений:
     if lower_text.startswith("баланс"):
         await handle_balance(update, context)
     elif lower_text.startswith("дать"):
@@ -785,6 +765,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_level_info(update, context)
 
 
+
 commands_common = {
     "баланс": "Показать текущий баланс и уровень",
     "дать <число>": "Передать печеньки другому игроку",
@@ -812,7 +793,7 @@ level_config = {
         2: (0, 1, [0.19, 0.8, 0.01]),
         3: (0, 2, [0.19, 0.4, 0.41]),
         4: (0, 4, [0.09, 0.25, 0.25, 0.4, 0.01]),
-        5: (1, 4, [0.09, 0.25, 0.5,0.61]),
+        5: (1, 4, [0.19, 0.3, 0.5,0.01]),
         6: (1, 4, [0.05, 0.4, 0.4, 0.15]),
         7: (2, 4, [0.4, 0.4,0.2]),
         8: (2, 5, [0.2, 0.4,0.3,0.1]),
