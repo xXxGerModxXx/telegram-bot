@@ -450,16 +450,25 @@ async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
+        # Отправка BALANCE_FILE
         with open(BALANCE_FILE, 'r', encoding='utf-8') as f:
-            content = f.read()
-            # Telegram ограничивает 4096 символов на сообщение
-            if len(content) <= 4096:
-                await msg.reply_text(f"```json\n{content}\n```", parse_mode="Markdown")
+            balance_content = f.read()
+            if len(balance_content) <= 4096:
+                await msg.reply_text(f"📂 *Содержимое {BALANCE_FILE}*\n```json\n{balance_content}\n```", parse_mode="Markdown")
             else:
-                # Если слишком длинный — отправим как файл
                 await msg.reply_document(document=open(BALANCE_FILE, 'rb'))
+
+        # Отправка levels_price.json
+        with open('levels_price.json', 'r', encoding='utf-8') as f:
+            levels_content = f.read()
+            if len(levels_content) <= 4096:
+                await msg.reply_text(f"📊 *Цены уровней (levels_price.json)*\n```json\n{levels_content}\n```", parse_mode="Markdown")
+            else:
+                await msg.reply_document(document=open('levels_price.json', 'rb'))
+
     except Exception as e:
-        await msg.reply_text(f"Ошибка при чтении баланса: {e}")
+        await msg.reply_text(f"❌ Ошибка при чтении файлов: {e}")
+
 async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     username = get_username_from_message(msg)
@@ -628,7 +637,7 @@ async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = prices.get(str(level), "🚫" if level == 1 else "неизвестно")
 
         lines.append(
-            f"*{level} уровень*: {min_amt}–{max_amt} 🍪 — шанс: {chance_str} — цена: {price}"
+            f"*{level} уровень*: {min_amt}–{max_amt} 🍪 в день — шанс: {chance_str} — цена: {price}"
         )
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
