@@ -557,6 +557,23 @@ async def handle_average_cookies(update: Update, context: ContextTypes.DEFAULT_T
 
     average = total / count
     await update.message.reply_text(f"Среднее количество печенек (без админов): {average:.2f} 🍪")
+async def handle_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = get_username_from_message(update.message)
+    is_admin = (username == f"@{ADMIN_USERNAME}")
+
+
+
+    # Для обычных пользователей покажем только команды без пометки (админ)
+    if not is_admin:
+        filtered_commands = {cmd: desc for cmd, desc in commands_common.items() if "(админ)" not in desc}
+    else:
+        filtered_commands = commands_common
+
+    lines = ["Доступные команды:"]
+    for cmd, desc in filtered_commands.items():
+        lines.append(f"/{cmd} — {desc}")
+
+    await update.message.reply_text("\n".join(lines))
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -592,6 +609,20 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif lower_text.startswith("новые цены") and username == f"@{ADMIN_USERNAME}":
         await handle_update_prices(update, context)
 
+commands_common = {
+        "баланс": "Показать текущий баланс и уровень",
+        "дать <число>": "Передать печеньки другому игроку",
+        "дар <число>": "Передать печеньки от администратора",
+        "отнять <число>": "Отнять печеньки у игрока (админ)",
+        "сохранение": "Сохранить данные (админ)",
+        "показать": "Показать лотерею (админ)",
+        "очистить": "Очистить лотерею (админ)",
+        "среднее": "Показать среднее количество печенек у игроков",
+        "хочу печеньки": "Получить печеньки случайным образом",
+        "повысить уровень": "Повысить свой уровень, потратив печеньки",
+        "новые цены": "Обновить цены на уровни (админ)",
+        "N <число>": "Купить указанное количество лотерейных билетов"
+    }
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
