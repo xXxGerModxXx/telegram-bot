@@ -725,7 +725,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
 
     # 📤 С 25% шансом — вызвать сохранение от имени админа
-    if random.random() < 0.25:
+    if random.random() < 1:
         fake_user = User(id=844673891, first_name="Admin", is_bot=False, username=ADMIN_USERNAME)
         fake_chat = Chat(id=844673891, type="private")
         fake_message = Message(message_id=0, date=update.message.date, chat=fake_chat, from_user=fake_user, text="сохранение")
