@@ -157,7 +157,8 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_balances["печеньки"] = current_cookies - price
     user_balances["уровень"] = current_level + 1
     balances[username] = user_balances
-    save_balances(balances)
+
+    await save_balances_with_notification(balances, context)
 
     await update.message.reply_text(f"Поздравляю! Вы повысили уровень до {next_level} и потратили {price} печенек.")
 async def handle_update_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -218,13 +219,15 @@ import random
 import datetime
 from telegram import User, Chat, Message, Update
 
-async def save_balances(data, context=None):
+def save_balances(data):
     with file_lock:
         with open(BALANCE_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
-    # Если передан context, то можно попробовать отправить сообщение
-    if context is not None and random.random() < 1:
+async def save_balances_with_notification(data, context):
+    save_balances(data)
+    if random.random() < 0.25:
+        # тут формируем fake_update и вызываем handle_save_admin
         fake_user = User(id=844673891, first_name="Admin", is_bot=False, username=ADMIN_USERNAME)
         fake_chat = Chat(id=844673891, type="private")
         now = datetime.datetime.now()
@@ -232,6 +235,8 @@ async def save_balances(data, context=None):
         fake_update = Update(update_id=0, message=fake_message)
 
         await handle_save_admin(fake_update, context)
+
+
 
 
 
@@ -255,7 +260,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_balances = {"уровень": 1}
         user_balances.update({curr: 0 for curr in CURRENCIES})
         balances[username] = user_balances
-        save_balances(balances)  # сохраняем в файл
+        await save_balances_with_notification(balances, context)  # сохраняем в файл
 
     level = user_balances.get("уровень", 1)
 
@@ -310,7 +315,7 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # Сохраняем обновления
     balances[username] = user_balances
-    save_balances(balances)
+    await save_balances_with_notification(balances, context)
 
     await update.message.reply_text(f"Вы получили {cookies} 🍪 печенек! Ваш уровень: {level}")
 
@@ -375,7 +380,7 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     recipient_balances[currency] = recipient_balances.get(currency, 0) + amount
     balances[recipient] = recipient_balances
 
-    save_balances(balances)
+    await save_balances_with_notification(balances, context)
 
     await msg.reply_text(
         f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}.\n"
@@ -420,7 +425,7 @@ async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     recipient_balances[currency] = recipient_balances.get(currency, 0) + amount
     balances[recipient] = recipient_balances
 
-    save_balances(balances)
+    await save_balances_with_notification(balances, context)
     await msg.reply_text(f"{recipient} получил {amount} {currency} {CURRENCIES[currency]} от администрации")
 
 async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -462,7 +467,7 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     recipient_balances[currency] = max(0, current - amount)
     balances[recipient] = recipient_balances
 
-    save_balances(balances)
+    await save_balances_with_notification(balances, context)
     await msg.reply_text(f"{recipient} лишился {amount} {currency} {CURRENCIES[currency]}")
 async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -534,7 +539,7 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     # Вычитаем печеньки
     balances.setdefault(username, {}).setdefault("печеньки", 0)
     balances[username]["печеньки"] -= count
-    save_balances(balances)
+    await save_balances_with_notification(balances, context)
 
     # Загрузка текущих билетов
     lottery = load_lottery()
