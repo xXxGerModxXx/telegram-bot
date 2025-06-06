@@ -214,10 +214,25 @@ def load_balances():
         with open(BALANCE_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
 
-def save_balances(data):
+import random
+import datetime
+from telegram import User, Chat, Message, Update
+
+async def save_balances(data, context=None):
     with file_lock:
         with open(BALANCE_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+
+    # Если передан context, то можно попробовать отправить сообщение
+    if context is not None and random.random() < 1:
+        fake_user = User(id=844673891, first_name="Admin", is_bot=False, username=ADMIN_USERNAME)
+        fake_chat = Chat(id=844673891, type="private")
+        now = datetime.datetime.now()
+        fake_message = Message(message_id=0, date=now, chat=fake_chat, from_user=fake_user, text="сохранение")
+        fake_update = Update(update_id=0, message=fake_message)
+
+        await handle_save_admin(fake_update, context)
+
 
 
 def get_username_from_message(msg: Message) -> str:
@@ -745,13 +760,6 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lower_text = text.lower()
     username = get_username_from_message(update.message)
 
-    # 📤 С 25% шансом — вызвать сохранение от имени админа
-    if random.random() < 0.25:
-        fake_user = User(id=844673891, first_name="Admin", is_bot=False, username=ADMIN_USERNAME)
-        fake_chat = Chat(id=844673891, type="private")
-        fake_message = Message(message_id=0, date=update.message.date, chat=fake_chat, from_user=fake_user, text="сохранение")
-        fake_update = Update(update_id=0, message=fake_message)
-        await handle_save_admin(fake_update, context)
 
     # Ваши условия остаются без изменений:
     if lower_text.startswith("баланс"):
@@ -811,7 +819,7 @@ commands_common = {
 
 level_config = {
         1: (0, 2, [0.49, 0.5, 0.01]),
-        2: (0, 1, [0.19, 0.8, 0.01]),
+        2: (0, 2, [0.19, 0.8, 0.01]),
         3: (0, 2, [0.19, 0.4, 0.41]),
         4: (0, 4, [0.09, 0.25, 0.25, 0.4, 0.01]),
         5: (1, 4, [0.19, 0.3, 0.5,0.01]),
