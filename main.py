@@ -85,12 +85,21 @@ def load_levels_price():
 async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balances = load_balances()
 
+    excluded_users = {"@hto_i_taki", "@Shittttt", "@zZardexe", "@insanemaloy"}
+
     def clean_username(name):
         return name.lstrip('@')
 
-    # Сортируем по печенькам
-    top_cookies = sorted(balances.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
-    top_levels = sorted(balances.items(), key=lambda x: x[1].get("уровень", 1), reverse=True)[:5]
+    # Отфильтровать все топы от исключённых пользователей
+    filtered_balances = {k: v for k, v in balances.items() if k not in excluded_users}
+
+    # Сортировки
+    top_cookies = sorted(filtered_balances.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
+    top_levels = sorted(filtered_balances.items(), key=lambda x: x[1].get("уровень", 1), reverse=True)[:5]
+
+    # Топ обычных игроков (ещё раз, на случай если в будущем список админов обновится отдельно)
+    non_admin_balances = {k: v for k, v in filtered_balances.items() if k not in excluded_users}
+    top_users_only = sorted(non_admin_balances.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
 
     lines = ["🏆 Топ 5 по Печенькам:"]
     for i, (user, data) in enumerate(top_cookies, 1):
@@ -100,7 +109,12 @@ async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, (user, data) in enumerate(top_levels, 1):
         lines.append(f"{i}. {clean_username(user)} — уровень {data.get('уровень', 1)}")
 
+    lines.append("\n👥 Топ 5 обычных игроков по Печенькам:")
+    for i, (user, data) in enumerate(top_users_only, 1):
+        lines.append(f"{i}. {clean_username(user)} — {data.get('печеньки', 0)} 🍪")
+
     await update.message.reply_text("\n".join(lines))
+
 
 def save_levels_price(data):
     with open(LEVELS_PRICE_FILE, 'w', encoding='utf-8') as f:
