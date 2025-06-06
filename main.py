@@ -649,16 +649,18 @@ async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     excluded_users = {"@hto_i_taki", "@Shittttt", "@zZardexe", "@insanemaloy"}
 
-    # Топ 5 по печенькам (все)
-    top_cookies = sorted(balances.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
-    # Топ 5 по уровням (все)
-    top_levels = sorted(balances.items(), key=lambda x: x[1].get("уровень", 1), reverse=True)[:5]
-    # Топ 5 по печенькам без админов
-    top_non_admins = sorted(
-        ((u, d) for u, d in balances.items() if u not in excluded_users),
-        key=lambda x: x[1].get("печеньки", 0),
-        reverse=True
-    )[:5]
+    # Убираем всех исключённых
+    filtered_balances = {user: data for user, data in balances.items() if user not in excluded_users}
+
+    # Топ 5 по печенькам (все пользователи, кроме @hto_i_taki)
+    top_cookies = sorted(filtered_balances.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
+
+    # Топ 5 по уровням (все пользователи, кроме @hto_i_taki)
+    top_levels = sorted(filtered_balances.items(), key=lambda x: x[1].get("уровень", 1), reverse=True)[:5]
+
+    # Топ без админов
+    non_admin_users = {user: data for user, data in balances.items() if user not in excluded_users}
+    top_non_admin = sorted(non_admin_users.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
 
     lines = ["🏆 Топ 5 по Печенькам:"]
     for i, (user, data) in enumerate(top_cookies, 1):
@@ -668,11 +670,12 @@ async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, (user, data) in enumerate(top_levels, 1):
         lines.append(f"{i}. {clean_username(user)} — уровень {data.get('уровень', 1)}")
 
-    lines.append("\n🌟 Топ 5 игроков (без админов):")
-    for i, (user, data) in enumerate(top_non_admins, 1):
+    lines.append("\n🚫 Топ без Админов:")
+    for i, (user, data) in enumerate(top_non_admin, 1):
         lines.append(f"{i}. {clean_username(user)} — {data.get('печеньки', 0)} 🍪")
 
     await update.message.reply_text("\n".join(lines))
+
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
