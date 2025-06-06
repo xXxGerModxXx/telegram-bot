@@ -13,6 +13,7 @@ import os
 from telegram.ext import ApplicationBuilder, MessageHandler, filters
 # 🔐 Защита от повторного запуска
 logging.info("Бот запускается...")  # это будет выведено только при первом запуске
+ADMIN_CHAT_ID = 844673891  # Твой chat_id
 
 if "RUNNING" in os.environ:
     logging.error("Похоже, бот уже работает. Завершаем процесс.")
@@ -61,10 +62,17 @@ def start_dummy_server():
 
 # === Запуск бота ===
 def start_bot():
-
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))
     print("Бот запущен...")
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    # Обработчик входящих текстовых сообщений
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))
+
+    # Планировщик: отправлять backup каждый час
+    job_queue = app.job_queue
+    job_queue.run_repeating(send_admin_backup, interval=3600, first=10)  # каждую 1 ч, первая отправка через 10 сек
+
+
     app.run_polling()
 def load_lottery():
     if not os.path.exists(LOTTERY_FILE):
@@ -73,6 +81,34 @@ def load_lottery():
         return json.load(f)
 
 LEVELS_PRICE_FILE = 'levels_price.json'
+async def send_admin_backup(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        # balances.json
+        with open(BALANCE_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+            if len(content) <= 4096:
+                await context.bot.send_message(
+                    chat_id=ADMIN_CHAT_ID,
+                    text=f"📦 Баланс:\n```json\n{content}\n```",
+                    parse_mode="Markdown"
+                )
+            else:
+                await context.bot.send_document(chat_id=ADMIN_CHAT_ID, document=open(BALANCE_FILE, 'rb'))
+
+        # levels_price.json
+        with open(LEVELS_PRICE_FILE, 'r', encoding='utf-8') as f:
+            content2 = f.read()
+            await context.bot.send_message(
+                chat_id=ADMIN_CHAT_ID,
+                text=f"🎯 Цены уровней:\n```json\n{content2}\n```",
+                parse_mode="Markdown"
+            )
+
+    except Exception as e:
+        await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"❗Ошибка при отправке данных: {e}")
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
+from telegram.ext import JobQueue
+import datetime
 
 def load_levels_price():
     if not os.path.exists(LEVELS_PRICE_FILE):
