@@ -608,6 +608,8 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_level_up(update, context)
     elif lower_text.startswith("новые цены") and username == f"@{ADMIN_USERNAME}":
         await handle_update_prices(update, context)
+    elif lower_text == "команды":
+        await handle_commands(update, context)
 
 commands_common = {
         "баланс": "Показать текущий баланс и уровень",
