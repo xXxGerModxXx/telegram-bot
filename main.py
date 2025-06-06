@@ -5,7 +5,12 @@ import sys  # <-- обязательно нужен для sys.exit
 import logging
 from telegram import Update, Message
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
-
+import threading
+from flask import Flask
+import threading
+from flask import Flask
+import os
+from telegram.ext import ApplicationBuilder, MessageHandler, filters
 # 🔐 Защита от повторного запуска
 logging.info("Бот запускается...")  # это будет выведено только при первом запуске
 
@@ -39,13 +44,111 @@ CURRENCIES = {
     "четырёхлистники": "🍀"
 }
 LOTTERY_FILE = 'lottery.json'
+# === Ваш обработчик сообщений ===
+async def main_handler(update, context):
+    await update.message.reply_text("Привет!")
 
+# === Заглушка HTTP-сервер для Render ===
+def start_dummy_server():
+    app = Flask(__name__)
+
+    @app.route('/')
+    def index():
+        return "Бот работает!"
+
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+# === Запуск бота ===
+def start_bot():
+
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))
+    print("Бот запущен...")
+    app.run_polling()
 def load_lottery():
     if not os.path.exists(LOTTERY_FILE):
         return {}
     with open(LOTTERY_FILE, 'r', encoding='utf-8') as f:
         return json.load(f)
 
+LEVELS_PRICE_FILE = 'levels_price.json'
+
+def load_levels_price():
+    if not os.path.exists(LEVELS_PRICE_FILE):
+        # Если файла нет — создадим дефолтные цены (10 для каждого уровня с 2 по 10)
+        default_prices = {str(i): 10 for i in range(2, 11)}
+        save_levels_price(default_prices)
+        return default_prices
+    with open(LEVELS_PRICE_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def save_levels_price(data):
+    with open(LEVELS_PRICE_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = get_username_from_message(update.message)
+    balances = load_balances()
+    user_balances = balances.get(username)
+
+    if user_balances is None:
+        await update.message.reply_text("Сначала заработайте печеньки, чтобы повысить уровень.")
+        return
+
+    current_level = user_balances.get("уровень", 1)
+    if current_level >= 10:
+        await update.message.reply_text("Вы уже достигли максимального уровня!")
+        return
+
+    levels_price = load_levels_price()
+    next_level = str(current_level + 1)
+    price = levels_price.get(next_level)
+
+    if price is None:
+        await update.message.reply_text("Не могу определить цену повышения уровня.")
+        return
+
+    current_cookies = user_balances.get("печеньки", 0)
+
+    if current_cookies < price:
+        await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {price} печенек")
+        return
+
+    # Отнимаем печеньки и повышаем уровень
+    user_balances["печеньки"] = current_cookies - price
+    user_balances["уровень"] = current_level + 1
+    balances[username] = user_balances
+    save_balances(balances)
+
+    await update.message.reply_text(f"Поздравляю! Вы повысили уровень до {next_level} и потратили {price} печенек.")
+async def handle_update_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.username != ADMIN_USERNAME:
+        await update.message.reply_text("Команда доступна только администратору.")
+        return
+
+    text = update.message.text.strip()
+    # Ожидаем формат: "новые цены 10/10/10/10/10/10/10/10/10"
+    parts = text.split(maxsplit=2)
+    if len(parts) < 3:
+        await update.message.reply_text("Неверный формат. Используйте: новые цены 10/10/10/10/10/10/10/10/10")
+        return
+
+    prices_str = parts[2]
+    prices_list = prices_str.split('/')
+    if len(prices_list) != 9:
+        await update.message.reply_text("Должно быть ровно 9 цен для уровней 2-10.")
+        return
+
+    try:
+        prices = [int(p) for p in prices_list]
+    except ValueError:
+        await update.message.reply_text("Все цены должны быть целыми числами.")
+        return
+
+    new_prices = {str(level): price for level, price in zip(range(2, 11), prices)}
+    save_levels_price(new_prices)
+
+    await update.message.reply_text(f"Цены успешно обновлены: {prices_str}")
 
 def save_lottery(data, allow_empty=False):
     if not isinstance(data, dict):
@@ -82,15 +185,95 @@ def get_currency_from_text(text: str) -> str:
 async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
     balances = load_balances()
-    user_balances = balances.get(username, {})
-    if not user_balances:
-        user_balances = {curr: 0 for curr in CURRENCIES}
-    # Формируем ответ с балансом по всем валютам
-    lines = [f"{username}, твой баланс:"]
+    user_balances = balances.get(username)
+
+    if user_balances is None:
+        # Инициализируем нового игрока с уровнем 1 и нулём по валютам
+        user_balances = {"уровень": 1}
+        user_balances.update({curr: 0 for curr in CURRENCIES})
+        balances[username] = user_balances
+        save_balances(balances)  # сохраняем в файл
+
+    level = user_balances.get("уровень", 1)
+
+    lines = [f"{username}, твой баланс:",
+             f"Уровень: {level}"]
+
     for curr, emoji in CURRENCIES.items():
         amount = user_balances.get(curr, 0)
         lines.append(f"{amount} {curr} {emoji}")
+
     await update.message.reply_text("\n".join(lines))
+import random
+from datetime import datetime
+
+def get_cookies_by_level(level: int) -> int:
+    # Определяем диапазон и веса вероятностей по уровню
+    # Формат: (min, max, [вес1, вес2, ...])
+    level_config = {
+        1: (0, 1, [0.5, 0.5]),
+        2: (0, 1, [0.2, 0.8]),
+        3: (0, 2, [0.2, 0.4, 0.4]),
+        4: (0, 3, [0.1, 0.25, 0.25, 0.4]),
+        5: (1, 3, [0.25, 0.25, 0.5]),
+        6: (1, 3, [0.1, 0.4, 0.5]),
+        7: (2, 3, [0.4, 0.6]),
+        8: (2, 4, [0.3, 0.65, 0.05]),
+        9: (2, 4, [0.2, 0.7, 0.1]),
+        10: (2, 5, [0.1, 0.75, 0.1, 0.05]),
+    }
+    cfg = level_config.get(level, (0, 1, [0.5, 0.5]))  # дефолт для уровней > 10 или <1
+    min_val, max_val, weights = cfg
+
+    # Формируем список вариантов
+    values = list(range(min_val, max_val + 1))
+
+    # Выбираем с учётом весов
+    cookies = random.choices(values, weights=weights, k=1)[0]
+    return cookies
+def can_farm_today(last_farm_str: str) -> bool:
+    """Проверяет, можно ли фармить сегодня, сравнивая даты"""
+    if not last_farm_str:
+        return True
+    try:
+        last_farm = datetime.strptime(last_farm_str, "%H:%M %d-%m-%Y")
+    except Exception:
+        return True  # Если формат не совпал, разрешаем фарм
+
+    now = datetime.now()
+    return now.date() > last_farm.date()
+async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = get_username_from_message(update.message)
+    balances = load_balances()
+    user_balances = balances.get(username)
+
+    if user_balances is None:
+        # Если юзер новый, инициализируем
+        user_balances = {"уровень": 1}
+        user_balances.update({curr: 0 for curr in CURRENCIES})
+        balances[username] = user_balances
+
+    # Проверяем, когда последний фарм
+    last_farm_str = user_balances.get("последний фарм", "")
+    if not can_farm_today(last_farm_str):
+        await update.message.reply_text("Вы уже получали печеньки сегодня. Попробуйте завтра!")
+        return
+
+    level = user_balances.get("уровень", 1)
+    cookies = get_cookies_by_level(level)
+
+    # Добавляем печеньки в баланс
+    user_balances["печеньки"] = user_balances.get("печеньки", 0) + cookies
+
+    # Обновляем время последнего фарма
+    user_balances["последний фарм"] = datetime.now().strftime("%H:%M %d-%m-%Y")
+
+    # Сохраняем обновления
+    balances[username] = user_balances
+    save_balances(balances)
+
+    await update.message.reply_text(f"Вы получили {cookies} 🍪 печенек! Ваш уровень: {level}")
+
 
 async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -401,7 +584,12 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_clear_lottery(update, context)
     elif lower_text.startswith("среднее"):
         await handle_average_cookies(update, context)
-
+    elif lower_text == "хочу печеньки":
+        await handle_want_cookies(update, context)
+    elif lower_text == "повысить уровень":
+        await handle_level_up(update, context)
+    elif lower_text.startswith("новые цены") and username == f"@{ADMIN_USERNAME}":
+        await handle_update_prices(update, context)
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
