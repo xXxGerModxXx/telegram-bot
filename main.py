@@ -82,6 +82,25 @@ def load_levels_price():
         return default_prices
     with open(LEVELS_PRICE_FILE, 'r', encoding='utf-8') as f:
         return json.load(f)
+async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    balances = load_balances()
+
+    def clean_username(name):
+        return name.lstrip('@')
+
+    # Сортируем по печенькам
+    top_cookies = sorted(balances.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
+    top_levels = sorted(balances.items(), key=lambda x: x[1].get("уровень", 1), reverse=True)[:5]
+
+    lines = ["🏆 Топ 5 по Печенькам:"]
+    for i, (user, data) in enumerate(top_cookies, 1):
+        lines.append(f"{i}. {clean_username(user)} — {data.get('печеньки', 0)} 🍪")
+
+    lines.append("\n🎖️ Топ 5 по Уровням:")
+    for i, (user, data) in enumerate(top_levels, 1):
+        lines.append(f"{i}. {clean_username(user)} — уровень {data.get('уровень', 1)}")
+
+    await update.message.reply_text("\n".join(lines))
 
 def save_levels_price(data):
     with open(LEVELS_PRICE_FILE, 'w', encoding='utf-8') as f:
@@ -162,15 +181,24 @@ def save_lottery(data, allow_empty=False):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def load_balances():
-    if not os.path.exists(BALANCE_FILE):
-        return {}
-    with open(BALANCE_FILE, 'r', encoding='utf-8') as f:
-        return json.load(f)
+import threading
+import os
 
-def save_balances(balances):
-    with open(BALANCE_FILE, 'w', encoding='utf-8') as f:
-        json.dump(balances, f, ensure_ascii=False, indent=2)
+
+file_lock = threading.Lock()
+
+def load_balances():
+    with file_lock:
+        if not os.path.exists(BALANCE_FILE):
+            return {}
+        with open(BALANCE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+def save_balances(data):
+    with file_lock:
+        with open(BALANCE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
 
 def get_username_from_message(msg: Message) -> str:
     return f"@{msg.from_user.username}" if msg.from_user.username else f"id{msg.from_user.id}"
@@ -207,30 +235,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 import random
 from datetime import datetime
 
-def get_cookies_by_level(level: int) -> int:
-    # Определяем диапазон и веса вероятностей по уровню
-    # Формат: (min, max, [вес1, вес2, ...])
-    level_config = {
-        1: (0, 1, [0.5, 0.5]),
-        2: (0, 1, [0.2, 0.8]),
-        3: (0, 2, [0.2, 0.4, 0.4]),
-        4: (0, 3, [0.1, 0.25, 0.25, 0.4]),
-        5: (1, 3, [0.25, 0.25, 0.5]),
-        6: (1, 3, [0.1, 0.4, 0.5]),
-        7: (2, 3, [0.4, 0.6]),
-        8: (2, 4, [0.3, 0.65, 0.05]),
-        9: (2, 4, [0.2, 0.7, 0.1]),
-        10: (2, 5, [0.1, 0.75, 0.1, 0.05]),
-    }
-    cfg = level_config.get(level, (0, 1, [0.5, 0.5]))  # дефолт для уровней > 10 или <1
-    min_val, max_val, weights = cfg
 
-    # Формируем список вариантов
-    values = list(range(min_val, max_val + 1))
-
-    # Выбираем с учётом весов
-    cookies = random.choices(values, weights=weights, k=1)[0]
-    return cookies
 def can_farm_today(last_farm_str: str) -> bool:
     """Проверяет, можно ли фармить сегодня, сравнивая даты"""
     if not last_farm_str:
@@ -571,10 +576,79 @@ async def handle_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lines = ["Доступные команды:"]
     for cmd, desc in filtered_commands.items():
-        lines.append(f"/{cmd} — {desc}")
+        lines.append(f"{cmd} — {desc}")
 
     await update.message.reply_text("\n".join(lines))
 
+
+def get_cookies_by_level(level: int) -> int:
+    # Определяем диапазон и веса вероятностей по уровню
+    # Формат: (min, max, [вес1, вес2, ...])
+
+    cfg = level_config.get(level, (0, 1, [0.5, 0.5]))  # дефолт для уровней > 10 или <1
+    min_val, max_val, weights = cfg
+
+    # Формируем список вариантов
+    values = list(range(min_val, max_val + 1))
+
+    # Выбираем с учётом весов
+    cookies = random.choices(values, weights=weights, k=1)[0]
+    return cookies
+async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+
+    # Загружаем цены
+    try:
+        with open("levels_price.json", "r", encoding="utf-8") as f:
+            prices = json.load(f)
+    except FileNotFoundError:
+        prices = {}
+
+    lines = ["📊 *Информация об уровнях*",
+             "Уровень увеличивает фарм печенек и открывает новые возможности.\n"]
+
+    for level in range(1, 11):
+        min_amt, max_amt, chances = level_config[level]
+        chance_str = "/".join(f"{round(p * 100)}" for p in chances)
+        price = prices.get(str(level), "🚫" if level == 1 else "неизвестно")
+
+        lines.append(
+            f"*{level} уровень*: {min_amt}–{max_amt} 🍪 — шанс: {chance_str} — цена: {price}"
+        )
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    balances = load_balances()
+
+    def clean_username(name):
+        return name.lstrip('@')
+
+    excluded_users = {"@hto_i_taki", "@Shittttt", "@zZardexe", "@insanemaloy"}
+
+    # Топ 5 по печенькам (все)
+    top_cookies = sorted(balances.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
+    # Топ 5 по уровням (все)
+    top_levels = sorted(balances.items(), key=lambda x: x[1].get("уровень", 1), reverse=True)[:5]
+    # Топ 5 по печенькам без админов
+    top_non_admins = sorted(
+        ((u, d) for u, d in balances.items() if u not in excluded_users),
+        key=lambda x: x[1].get("печеньки", 0),
+        reverse=True
+    )[:5]
+
+    lines = ["🏆 Топ 5 по Печенькам:"]
+    for i, (user, data) in enumerate(top_cookies, 1):
+        lines.append(f"{i}. {clean_username(user)} — {data.get('печеньки', 0)} 🍪")
+
+    lines.append("\n🎖️ Топ 5 по Уровням:")
+    for i, (user, data) in enumerate(top_levels, 1):
+        lines.append(f"{i}. {clean_username(user)} — уровень {data.get('уровень', 1)}")
+
+    lines.append("\n🌟 Топ 5 игроков (без админов):")
+    for i, (user, data) in enumerate(top_non_admins, 1):
+        lines.append(f"{i}. {clean_username(user)} — {data.get('печеньки', 0)} 🍪")
+
+    await update.message.reply_text("\n".join(lines))
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -610,22 +684,46 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_update_prices(update, context)
     elif lower_text == "команды":
         await handle_commands(update, context)
+    elif lower_text == "топ":
+        await handle_top(update, context)
+    elif lower_text == "уровень":
+        await handle_level_info(update, context)
+
 
 commands_common = {
-        "баланс": "Показать текущий баланс и уровень",
-        "дать <число>": "Передать печеньки другому игроку",
-        "дар <число>": "Передать печеньки от администратора",
-        "отнять <число>": "Отнять печеньки у игрока (админ)",
-        "сохранение": "Сохранить данные (админ)",
-        "показать": "Показать лотерею (админ)",
-        "очистить": "Очистить лотерею (админ)",
-        "среднее": "Показать среднее количество печенек у игроков",
-        "хочу печеньки": "Получить печеньки случайным образом",
-        "повысить уровень": "Повысить свой уровень, потратив печеньки",
-        "новые цены": "Обновить цены на уровни (админ)",
-        "N <число>": "Купить указанное количество лотерейных билетов"
-    }
+    "баланс": "Показать текущий баланс и уровень",
+    "дать <число>": "Передать печеньки другому игроку",
+    "дар <число>": "Передать печеньки от администратора (админ)",
+    "отнять <число>": "Отнять печеньки у игрока (админ)",
+    "сохранение": "Сохранить данные (админ)",
+    "показать": "Показать лотерею (админ)",
+    "очистить": "Очистить лотерею (админ)",
+    "среднее": "Показать среднее количество печенек у игроков",
+    "хочу печеньки": "Получить печеньки случайным образом",
+    "повысить уровень": "Повысить свой уровень, потратив печеньки",
+    "новые цены": "Обновить цены на уровни (админ)",
+    "N <число>": "Купить указанное количество лотерейных билетов",
+    "топ": "Топ 5 игроков по печенькам и уровням + топ без админов",
+    "уровень": "Информация о шансах и ценах для каждого уровня"
+}
 
+
+
+
+
+
+level_config = {
+        1: (0, 1, [0.5, 0.5]),
+        2: (0, 1, [0.2, 0.8]),
+        3: (0, 2, [0.2, 0.4, 0.4]),
+        4: (0, 3, [0.1, 0.25, 0.25, 0.4]),
+        5: (1, 3, [0.25, 0.25, 0.5]),
+        6: (1, 3, [0.1, 0.4, 0.5]),
+        7: (2, 3, [0.4, 0.6]),
+        8: (2, 4, [0.3, 0.65, 0.05]),
+        9: (2, 4, [0.2, 0.7, 0.1]),
+        10: (2, 5, [0.1, 0.75, 0.1, 0.05]),
+    }
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))
