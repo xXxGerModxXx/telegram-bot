@@ -566,8 +566,6 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lower_text = text.lower()
     username = get_username_from_message(update.message)
 
-    import socket
-    await update.message.reply_text(f"Host: {socket.gethostname()}")
 
     if lower_text.startswith("баланс"):
         await handle_balance(update, context)
@@ -593,13 +591,6 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_level_up(update, context)
     elif lower_text.startswith("новые цены") and username == f"@{ADMIN_USERNAME}":
         await handle_update_prices(update, context)
-    elif lower_text == "где ты" and update.message.from_user.username == ADMIN_USERNAME:
-        await handle_where_is_bot(update, context)
-import socket  # убедись, что это есть в импортах вверху
-
-async def handle_where_is_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    hostname = socket.gethostname()
-    await update.message.reply_text(f"Бот работает на: {hostname}")
 
 
 if __name__ == '__main__':
