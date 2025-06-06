@@ -641,38 +641,70 @@ async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+excluded_users = {"@hto_i_taki", "@Shittttt", "@zZardexe", "@insanemaloy"}  # админы
+excluded_users_Admin = {"@hto_i_taki"}  # исключить полностью
+
 async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balances = load_balances()
 
     def clean_username(name):
         return name.lstrip('@')
 
-    excluded_users = {"@hto_i_taki", "@Shittttt", "@zZardexe", "@insanemaloy"}
+    # Пользователи без excluded_users_Admin
+    balances_no_admin_global = {
+        user: data for user, data in balances.items()
+        if user not in excluded_users_Admin
+    }
 
-    # Убираем всех исключённых
-    filtered_balances = {user: data for user, data in balances.items() if user not in excluded_users}
+    # Пользователи без всех админов
+    balances_no_admins = {
+        user: data for user, data in balances.items()
+        if user not in excluded_users
+    }
 
-    # Топ 5 по печенькам (все пользователи, кроме @hto_i_taki)
-    top_cookies = sorted(filtered_balances.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
+    # Топ 5 по Печенькам (все, кроме @hto_i_taki)
+    top_cookies = sorted(
+        balances_no_admin_global.items(),
+        key=lambda x: x[1].get("печеньки", 0),
+        reverse=True
+    )[:5]
 
-    # Топ 5 по уровням (все пользователи, кроме @hto_i_taki)
-    top_levels = sorted(filtered_balances.items(), key=lambda x: x[1].get("уровень", 1), reverse=True)[:5]
+    # Топ 5 по Печенькам без админов
+    top_cookies_no_admins = sorted(
+        balances_no_admins.items(),
+        key=lambda x: x[1].get("печеньки", 0),
+        reverse=True
+    )[:5]
 
-    # Топ без админов
-    non_admin_users = {user: data for user, data in balances.items() if user not in excluded_users}
-    top_non_admin = sorted(non_admin_users.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
+    # Топ 5 по Уровням (все, кроме @hto_i_taki)
+    top_levels = sorted(
+        balances_no_admin_global.items(),
+        key=lambda x: x[1].get("уровень", 1),
+        reverse=True
+    )[:5]
+
+    # Топ 5 по Уровням без админов
+    top_levels_no_admins = sorted(
+        balances_no_admins.items(),
+        key=lambda x: x[1].get("уровень", 1),
+        reverse=True
+    )[:5]
 
     lines = ["🏆 Топ 5 по Печенькам:"]
     for i, (user, data) in enumerate(top_cookies, 1):
+        lines.append(f"{i}. {clean_username(user)} — {data.get('печеньки', 0)} 🍪")
+
+    lines.append("\n🚫 Топ 5 по Печенькам без админов:")
+    for i, (user, data) in enumerate(top_cookies_no_admins, 1):
         lines.append(f"{i}. {clean_username(user)} — {data.get('печеньки', 0)} 🍪")
 
     lines.append("\n🎖️ Топ 5 по Уровням:")
     for i, (user, data) in enumerate(top_levels, 1):
         lines.append(f"{i}. {clean_username(user)} — уровень {data.get('уровень', 1)}")
 
-    lines.append("\n🚫 Топ без Админов:")
-    for i, (user, data) in enumerate(top_non_admin, 1):
-        lines.append(f"{i}. {clean_username(user)} — {data.get('печеньки', 0)} 🍪")
+    lines.append("\n🎖️ Топ 5 по Уровням без админов:")
+    for i, (user, data) in enumerate(top_levels_no_admins, 1):
+        lines.append(f"{i}. {clean_username(user)} — уровень {data.get('уровень', 1)}")
 
     await update.message.reply_text("\n".join(lines))
 
