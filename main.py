@@ -580,10 +580,11 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     if current_index is not None:
         prev_range = ordered[current_index][1]
         previous_tickets = prev_range[1] - prev_range[0] + 1
-        ordered[current_index] = (username, [0, 0])  # временно
+        ordered.pop(current_index)  # удаляем старую запись, чтобы пересчитать
     else:
-        ordered.append((username, [0, 0]))
-        current_index = len(ordered) - 1
+        previous_tickets = 0
+    ordered.append((username, [0, 0]))  # добавим пользователя в конец списка
+    current_index = len(ordered) - 1
 
     total_tickets = previous_tickets + count
 
