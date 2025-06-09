@@ -87,38 +87,7 @@ def load_levels_price():
         return default_prices
     with open(LEVELS_PRICE_FILE, 'r', encoding='utf-8') as f:
         return json.load(f)
-async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    balances = load_balances()
 
-    excluded_users = {"@hto_i_taki", "@Shittttt", "@zZardexe", "@insanemaloy"}
-
-    def clean_username(name):
-        return name.lstrip('@')
-
-    # Отфильтровать все топы от исключённых пользователей
-    filtered_balances = {k: v for k, v in balances.items() if k not in excluded_users}
-
-    # Сортировки
-    top_cookies = sorted(filtered_balances.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
-    top_levels = sorted(filtered_balances.items(), key=lambda x: x[1].get("уровень", 1), reverse=True)[:5]
-
-    # Топ обычных игроков (ещё раз, на случай если в будущем список админов обновится отдельно)
-    non_admin_balances = {k: v for k, v in filtered_balances.items() if k not in excluded_users}
-    top_users_only = sorted(non_admin_balances.items(), key=lambda x: x[1].get("печеньки", 0), reverse=True)[:5]
-
-    lines = ["🏆 Топ 5 по Печенькам:"]
-    for i, (user, data) in enumerate(top_cookies, 1):
-        lines.append(f"{i}. {clean_username(user)} — {data.get('печеньки', 0)} 🍪")
-
-    lines.append("\n🎖️ Топ 5 по Уровням:")
-    for i, (user, data) in enumerate(top_levels, 1):
-        lines.append(f"{i}. {clean_username(user)} — уровень {data.get('уровень', 1)}")
-
-    lines.append("\n👥 Топ 5 обычных игроков по Печенькам:")
-    for i, (user, data) in enumerate(top_users_only, 1):
-        lines.append(f"{i}. {clean_username(user)} — {data.get('печеньки', 0)} 🍪")
-
-    await update.message.reply_text("\n".join(lines))
 
 
 
@@ -491,8 +460,7 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "amount": amount
     })
     await msg.reply_text(f"{recipient} лишился {amount} {currency} {CURRENCIES[currency]}")
-import os
-import json
+
 
 async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -633,7 +601,7 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     user_range = updated_lottery[username]
     await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪")
 
-import json
+
 
 import os
 import json
@@ -814,7 +782,7 @@ async def handle_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE
     args = text.split()
 
     try:
-        with open("transaction_log.json", "r", encoding="utf-8") as f:
+        with open("transaction.json", "r", encoding="utf-8") as f:
             transactions = json.load(f)
     except FileNotFoundError:
         await update.message.reply_text("Журнал транзакций пуст.")
