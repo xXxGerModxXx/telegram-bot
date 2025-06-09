@@ -46,8 +46,7 @@ CURRENCIES = {
 }
 LOTTERY_FILE = 'lottery.json'
 # === Ваш обработчик сообщений ===
-async def main_handler(update, context):
-    await update.message.reply_text("Привет!")
+
 
 # === Заглушка HTTP-сервер для Render ===
 def start_dummy_server():
@@ -845,7 +844,6 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                    text="сохранение")
             fake_update = Update(update_id=0, message=fake_message)
             await handle_save_admin(fake_update, context)
-
     # Ваши условия остаются без изменений:
     if lower_text.startswith("баланс"):
         await handle_balance(update, context)
@@ -853,40 +851,32 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_give(update, context)
         if random.random() < 0.25:
             await maybe_save_admin(update, context)
-
     elif lower_text.startswith("дар"):
         await handle_give_admin(update, context)
         if random.random() < 0.25:
             await maybe_save_admin(update, context)
-
     elif lower_text.startswith("отнять"):
         await handle_take_admin(update, context)
         if random.random() < 0.4:
             await maybe_save_admin(update, context)
-
     elif lower_text.startswith("сохранение"):
         await handle_save_admin(update, context)
     elif re.match(r'^N\s+\d+$', text, re.IGNORECASE):
         await handle_lottery_purchase(update, context)
     elif lower_text.startswith("показать"):
         await handle_show_lottery(update, context)
-
     elif lower_text.startswith("очистить"):
         await handle_clear_lottery(update, context)
-
-
     elif lower_text.startswith("среднее"):
         await handle_average_cookies(update, context)
     elif lower_text == "хочу печеньки":
         await handle_want_cookies(update, context)
         if random.random() < 0.2:
             await maybe_save_admin(update, context)
-
     elif lower_text == "повысить уровень":
         await handle_level_up(update, context)
         if random.random() < 0.25:
             await maybe_save_admin(update, context)
-
     elif lower_text.startswith("новые цены") and username == f"@{ADMIN_USERNAME}":
         await handle_update_prices(update, context)
     elif lower_text == "команды":
