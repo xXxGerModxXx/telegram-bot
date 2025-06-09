@@ -455,6 +455,9 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     save_balances(balances)
     await msg.reply_text(f"{recipient} лишился {amount} {currency} {CURRENCIES[currency]}")
+import os
+import json
+
 async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
 
@@ -496,32 +499,43 @@ async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 document=open('levels_price.json', 'rb')
             )
 
-        # Теперь отправляем содержимое лотереи (как в handle_show_lottery)
-        lottery = load_lottery()
+        # Теперь отправляем содержимое лотереи (с безопасной загрузкой)
+        lottery = safe_load_lottery()
         if not lottery:
             await context.bot.send_message(chat_id=admin_chat_id, text="🎟️ Файл с билетами пуст.")
-            return
-
-        json_text = json.dumps(lottery, ensure_ascii=False, indent=2)
-
-        if len(json_text) <= 4000:
-            await context.bot.send_message(
-                chat_id=admin_chat_id,
-                text=f"🎟️ *Содержимое лотереи*\n```json\n{json_text}\n```",
-                parse_mode="Markdown"
-            )
         else:
-            temp_path = "lottery_temp.json"
-            with open(temp_path, "w", encoding="utf-8") as f:
-                f.write(json_text)
-            await context.bot.send_document(chat_id=admin_chat_id, document=open(temp_path, "rb"))
-            os.remove(temp_path)
+            json_text = json.dumps(lottery, ensure_ascii=False, indent=2)
+
+            if len(json_text) <= 4000:
+                await context.bot.send_message(
+                    chat_id=admin_chat_id,
+                    text=f"🎟️ *Содержимое лотереи*\n```json\n{json_text}\n```",
+                    parse_mode="Markdown"
+                )
+            else:
+                temp_path = "lottery_temp.json"
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    f.write(json_text)
+                await context.bot.send_document(chat_id=admin_chat_id, document=open(temp_path, "rb"))
+                os.remove(temp_path)
 
     except Exception as e:
         await context.bot.send_message(
             chat_id=admin_chat_id,
             text=f"❌ Ошибка при чтении файлов: {e}"
         )
+
+
+def safe_load_lottery():
+    try:
+        with open("lottery.json", "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if not content:
+                return []
+            return json.loads(content)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
 async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     username = get_username_from_message(msg)
@@ -594,7 +608,7 @@ async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Эта команда доступна только админу.")
         return
 
-    lottery = load_lottery()
+    lottery = safe_load_lottery()
     if not lottery:
         await update.message.reply_text("Файл с билетами пуст.")
         return
@@ -615,7 +629,6 @@ async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"Содержимое файла:\n```json\n{json_text}\n```",
             parse_mode="Markdown"
         )
-
 
 async def handle_clear_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if get_username_from_message(update.message) != f"@{ADMIN_USERNAME}":
@@ -813,10 +826,13 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_save_admin(update, context)
     elif re.match(r'^N\s+\d+$', text, re.IGNORECASE):
         await handle_lottery_purchase(update, context)
-    elif lower_text == "показать" and update.message.from_user.username == ADMIN_USERNAME:
+    elif lower_text.startswith("показать"):
         await handle_show_lottery(update, context)
-    elif lower_text == "очистить" and update.message.from_user.username == ADMIN_USERNAME:
+
+    elif lower_text.startswith("очистить"):
         await handle_clear_lottery(update, context)
+
+
     elif lower_text.startswith("среднее"):
         await handle_average_cookies(update, context)
     elif lower_text == "хочу печеньки":
