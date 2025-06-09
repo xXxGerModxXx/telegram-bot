@@ -273,6 +273,8 @@ def can_farm_today(last_farm_str: str) -> bool:
 
     now = datetime.now()
     return now.date() > last_farm.date()
+from datetime import datetime
+
 async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
     balances = load_balances()
@@ -302,6 +304,15 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Сохраняем обновления
     balances[username] = user_balances
     save_balances(balances)
+
+    # Логируем
+    log_transaction({
+        "timestamp": datetime.utcnow().isoformat(),
+        "type": "хочу печеньки",
+        "to": username,
+        "currency": "печеньки",
+        "amount": cookies
+    })
 
     await update.message.reply_text(f"Вы получили {cookies} 🍪 печенек! Ваш уровень: {level}")
 
@@ -367,11 +378,20 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balances[recipient] = recipient_balances
 
     save_balances(balances)
-
+    log_transaction({
+        "timestamp": datetime.utcnow().isoformat(),
+        "type": "дать",
+        "from": sender,
+        "to": recipient,
+        "currency": currency,
+        "amount": amount
+    })
     await msg.reply_text(
         f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}.\n"
 
     )
+
+
 
 async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -412,6 +432,14 @@ async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balances[recipient] = recipient_balances
 
     save_balances(balances)
+    log_transaction({
+        "timestamp": datetime.utcnow().isoformat(),
+        "type": "дар",
+        "from": "Администрация",
+        "to": recipient,
+        "currency": currency,
+        "amount": amount
+    })
     await msg.reply_text(f"{recipient} получил {amount} {currency} {CURRENCIES[currency]} от администрации")
 
 async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -454,6 +482,14 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balances[recipient] = recipient_balances
 
     save_balances(balances)
+    log_transaction({
+        "timestamp": datetime.utcnow().isoformat(),
+        "type": "отнять",
+        "from": "Администрация",
+        "to": recipient,
+        "currency": currency,
+        "amount": amount
+    })
     await msg.reply_text(f"{recipient} лишился {amount} {currency} {CURRENCIES[currency]}")
 import os
 import json
@@ -694,29 +730,7 @@ def get_cookies_by_level(level: int) -> int:
     # Выбираем с учётом весов
     cookies = random.choices(values, weights=weights, k=1)[0]
     return cookies
-async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-
-    # Загружаем цены
-    try:
-        with open("levels_price.json", "r", encoding="utf-8") as f:
-            prices = json.load(f)
-    except FileNotFoundError:
-        prices = {}
-
-    lines = ["📊 *Информация об уровнях*",
-             "Уровень увеличивает фарм печенек и открывает новые возможности.\n"]
-
-    for level in range(1, 11):
-        min_amt, max_amt, chances = level_config[level]
-        chance_str = "/".join(f"{round(p * 100)}" for p in chances)
-        price = prices.get(str(level), "🚫" if level == 1 else "неизвестно")
-
-        lines.append(
-            f"*{level} уровень*: {min_amt}–{max_amt} 🍪 в день — шанс: {chance_str} — цена: {price}"
-        )
-
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 excluded_users = {"@hto_i_taki", "@Shittttt", "@zZardexe", "@insanemaloy"}  # админы
 excluded_users_Admin = {"@hto_i_taki"}  # исключить полностью
 
@@ -787,6 +801,63 @@ async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
 import random  # добавьте в начало файла, если ещё не импортировали
 from telegram import User, Chat, Message  # тоже добавьте в импорты
 
+
+async def handle_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = get_username_from_message(update.message)  # предполагаю, у тебя есть эта функция
+    if username != ADMIN_USERNAME:
+        await update.message.reply_text("Команда доступна только администратору.")
+        return
+
+    text = update.message.text.strip()
+    args = text.split()
+
+    try:
+        with open("transaction_log.json", "r", encoding="utf-8") as f:
+            transactions = json.load(f)
+    except FileNotFoundError:
+        await update.message.reply_text("Журнал транзакций пуст.")
+        return
+
+    if not transactions:
+        await update.message.reply_text("Журнал транзакций пуст.")
+        return
+
+    # Определяем сколько транзакций показывать
+    if len(args) == 1:
+        count = 10  # по умолчанию
+    elif len(args) == 2:
+        if args[1].lower() == "все":
+            count = len(transactions)
+        elif args[1].isdigit():
+            count = int(args[1])
+        else:
+            await update.message.reply_text("Неверный формат. Используй: транзакции [все|число]")
+            return
+    else:
+        await update.message.reply_text("Неверный формат. Используй: транзакции [все|число]")
+        return
+
+    # Показываем последние count записей
+    to_show = transactions[-count:]
+    lines = []
+    for tx in reversed(to_show):  # показываем от новых к старым
+        time = tx.get("timestamp", "")
+        ttype = tx.get("type", "")
+        frm = tx.get("from", "")
+        to = tx.get("to", "")
+        curr = tx.get("currency", "")
+        amt = tx.get("amount", "")
+        line = f"[{time}] {ttype}: {frm} ➝ {to}, {amt} {curr}"
+        lines.append(line)
+
+    message = "\n".join(lines)
+    if len(message) > 4096:  # Telegram ограничение
+        for i in range(0, len(message), 4096):
+            await update.message.reply_text(message[i:i + 4096])
+    else:
+        await update.message.reply_text(message)
+
+
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -853,6 +924,8 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_top(update, context)
     elif lower_text == "уровень":
         await handle_level_info(update, context)
+    elif lower_text.startswith("транзакции"):
+        await handle_transactions(update, context)
 
 
 
@@ -870,13 +943,70 @@ commands_common = {
     "новые цены": "Обновить цены на уровни (админ)",
     "N <число>": "Купить указанное количество лотерейных билетов",
     "топ": "Топ 5 игроков по печенькам и уровням + топ без админов",
-    "уровень": "Информация о шансах и ценах для каждого уровня"
+    "уровень": "Информация о шансах и ценах для каждого уровня",
+    "транзакции [все|число]": "Показать последние N или все транзакции (админ)"
 }
 
 
 
+async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Загружаем цены
+    try:
+        with open("levels_price.json", "r", encoding="utf-8") as f:
+            prices = json.load(f)
+    except FileNotFoundError:
+        prices = {}
 
+    lines = ["📊 *Информация об уровнях*",
+             "Уровень увеличивает фарм печенек и открывает новые возможности.\n"]
 
+    for level in range(1, 11):
+        min_amt, max_amt, chances = level_config[level]
+        chance_str = "/".join(f"{round(p * 100)}" for p in chances)
+        price = prices.get(str(level), "🚫" if level == 1 else "неизвестно")
+
+        lines.append(
+            f"*{level} уровень*: {min_amt}–{max_amt} 🍪 в день — шанс: {chance_str} — цена: {price}"
+        )
+
+    lines.append("\n📉 *Откуп от поражения*")
+    lines.append("Уровень понижает цену откупа в 2 раза, если достигнут нужный уровень.\n")
+    lines.append("*Формат:* `(Ступень — Этап) : Нужный уровень`")
+    lines.append("""
+📌 *Подготовительный Этап*
+- 1 ступень : 2 ур
+- 2 ступень : 4 ур
+- 3 ступень : 6 ур
+- Финал ПЭ : 8 ур
+
+📌 *Основная часть*
+- Первый Этап : 10 ур
+- Второй Этап : 12 ур
+- Третий Этап : 14 ур
+- Финал : 🚫 откуп не доступен
+""")
+
+    lines.append("📎 *Пример 1*:\nФинал Подготовительного Этапа. Базовая цена откупа — 150 🍪.\n"
+                 "Если у вас *8 уровень*, цена будет в 2 раза ниже: *75 🍪*.")
+
+    lines.append("📎 *Пример 2*:\nЕсли у вас *7 уровень* в том же этапе, то каждый уровень снижает цену на *5 🍪*:\n"
+                 "`150 - 7×5 = 115 🍪`")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+TRANSACTION_LOG_FILE = "transactions.json"
+
+def log_transaction(entry: dict):
+    try:
+        with open(TRANSACTION_LOG_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = []
+
+    data.append(entry)
+
+    with open(TRANSACTION_LOG_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 level_config = {
         1: (0, 2, [0.49, 0.5, 0.01]),
