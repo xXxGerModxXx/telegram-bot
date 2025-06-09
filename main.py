@@ -802,9 +802,11 @@ import random  # добавьте в начало файла, если ещё н
 from telegram import User, Chat, Message  # тоже добавьте в импорты
 
 
+ADMIN_CHAT_ID = 844673891  # ID администратора
+
 async def handle_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    username = get_username_from_message(update.message)  # предполагаю, у тебя есть эта функция
-    if username != ADMIN_USERNAME:
+    user_id = update.message.from_user.id
+    if user_id != ADMIN_CHAT_ID:
         await update.message.reply_text("Команда доступна только администратору.")
         return
 
@@ -851,11 +853,12 @@ async def handle_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE
         lines.append(line)
 
     message = "\n".join(lines)
-    if len(message) > 4096:  # Telegram ограничение
+    if len(message) > 4096:  # Ограничение Telegram
         for i in range(0, len(message), 4096):
             await update.message.reply_text(message[i:i + 4096])
     else:
         await update.message.reply_text(message)
+
 
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
