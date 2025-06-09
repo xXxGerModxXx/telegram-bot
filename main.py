@@ -788,7 +788,7 @@ async def handle_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     if not transactions:
-        await update.message.reply_text("Архив пуст.")
+        await update.message.reply_text("Архив пуст..")
         return
 
     # Определяем сколько транзакций показывать
