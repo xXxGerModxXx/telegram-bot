@@ -827,6 +827,15 @@ async def handle_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         await update.message.reply_text(message)
 
+async def handle_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📌 <b>WardShield Server Info</b>\n\n"
+        "💬 <b>Telegram чат:</b> <a href='https://t.me/+aLhslgqdoz1kYjky'>вступить</a>\n"
+        "🌐 <b>IP:</b> <code>WardShield_3.aternos.me</code>\n"
+        "🎮 <b>Версия Minecraft:</b> 1.21.1",
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
 
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -888,6 +897,8 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_level_info(update, context)
     elif lower_text.startswith("архив"):
         await handle_transactions(update, context)
+    elif any(phrase in lower_text for phrase in {"инфо", "ip", "инфа", "информация", "дайте ip", "скиньте ip", "какое ip"}):
+        await handle_info_command(update, context)
 
 
 
