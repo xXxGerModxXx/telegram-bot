@@ -534,10 +534,11 @@ def safe_load_lottery():
         with open("lottery.json", "r", encoding="utf-8") as f:
             content = f.read().strip()
             if not content:
-                return []
+                return {}
             return json.loads(content)
     except (FileNotFoundError, json.JSONDecodeError):
-        return []
+        return {}
+
 
 async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
