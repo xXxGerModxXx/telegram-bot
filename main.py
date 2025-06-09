@@ -614,7 +614,7 @@ async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Эта команда доступна только админу.")
         return
 
-    lottery = safe_load_lottery()
+    lottery = load_lottery()
     if not lottery:
         await update.message.reply_text("Файл с билетами пуст.")
         return
