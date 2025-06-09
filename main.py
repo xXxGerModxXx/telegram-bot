@@ -622,7 +622,7 @@ async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE
     json_text = json.dumps(lottery, ensure_ascii=False, indent=2)
 
     if len(json_text) > 4000:
-        temp_path = "lottery_temp.json"
+        temp_path = "lottery.json"
         with open(temp_path, "w", encoding="utf-8") as f:
             f.write(json_text)
 
