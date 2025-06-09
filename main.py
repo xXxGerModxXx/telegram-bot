@@ -782,7 +782,7 @@ async def handle_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE
     args = text.split()
 
     try:
-        with open("transaction.json", "r", encoding="utf-8") as f:
+        with open(TRANSACTION_LOG_FILE, "r", encoding="utf-8") as f:
             transactions = json.load(f)
     except FileNotFoundError:
         await update.message.reply_text("Журнал транзакций пуст.")
