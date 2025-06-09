@@ -218,11 +218,12 @@ import random
 import datetime
 from telegram import User, Chat, Message, Update
 
+file_lock1 = threading.Lock()
+
 def save_balances(data):
-    with file_lock:
+    with file_lock1:
         with open(BALANCE_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-
 
 
 def get_username_from_message(msg: Message) -> str:
@@ -457,7 +458,6 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
 
-    # Если это настоящий пользователь, проверяем admin
     if msg.from_user and msg.from_user.username != ADMIN_USERNAME:
         return
 
@@ -467,39 +467,61 @@ async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Отправляем содержимое BALANCE_FILE
         with open(BALANCE_FILE, 'r', encoding='utf-8') as f:
             balance_content = f.read()
-            if len(balance_content) <= 4096:
-                await context.bot.send_message(
-                    chat_id=admin_chat_id,
-                    text=f"📂 *Содержимое {BALANCE_FILE}*\n```json\n{balance_content}\n```",
-                    parse_mode="Markdown"
-                )
-            else:
-                await context.bot.send_document(
-                    chat_id=admin_chat_id,
-                    document=open(BALANCE_FILE, 'rb')
-                )
+
+        if len(balance_content) <= 4000:
+            await context.bot.send_message(
+                chat_id=admin_chat_id,
+                text=f"📂 *Содержимое {BALANCE_FILE}*\n```json\n{balance_content}\n```",
+                parse_mode="Markdown"
+            )
+        else:
+            await context.bot.send_document(
+                chat_id=admin_chat_id,
+                document=open(BALANCE_FILE, 'rb')
+            )
 
         # Отправляем содержимое levels_price.json
         with open('levels_price.json', 'r', encoding='utf-8') as f:
             levels_content = f.read()
-            if len(levels_content) <= 4096:
-                await context.bot.send_message(
-                    chat_id=admin_chat_id,
-                    text=f"📊 *Цены уровней (levels_price.json)*\n```json\n{levels_content}\n```",
-                    parse_mode="Markdown"
-                )
-            else:
-                await context.bot.send_document(
-                    chat_id=admin_chat_id,
-                    document=open('levels_price.json', 'rb')
-                )
+
+        if len(levels_content) <= 4000:
+            await context.bot.send_message(
+                chat_id=admin_chat_id,
+                text=f"📊 *Цены уровней (levels_price.json)*\n```json\n{levels_content}\n```",
+                parse_mode="Markdown"
+            )
+        else:
+            await context.bot.send_document(
+                chat_id=admin_chat_id,
+                document=open('levels_price.json', 'rb')
+            )
+
+        # Теперь отправляем содержимое лотереи (как в handle_show_lottery)
+        lottery = load_lottery()
+        if not lottery:
+            await context.bot.send_message(chat_id=admin_chat_id, text="🎟️ Файл с билетами пуст.")
+            return
+
+        json_text = json.dumps(lottery, ensure_ascii=False, indent=2)
+
+        if len(json_text) <= 4000:
+            await context.bot.send_message(
+                chat_id=admin_chat_id,
+                text=f"🎟️ *Содержимое лотереи*\n```json\n{json_text}\n```",
+                parse_mode="Markdown"
+            )
+        else:
+            temp_path = "lottery_temp.json"
+            with open(temp_path, "w", encoding="utf-8") as f:
+                f.write(json_text)
+            await context.bot.send_document(chat_id=admin_chat_id, document=open(temp_path, "rb"))
+            os.remove(temp_path)
 
     except Exception as e:
         await context.bot.send_message(
             chat_id=admin_chat_id,
             text=f"❌ Ошибка при чтении файлов: {e}"
         )
-
 async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     username = get_username_from_message(msg)
@@ -563,6 +585,9 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
 
 import json
 
+import os
+import json
+
 async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
     if username != f"@{ADMIN_USERNAME}":
@@ -576,13 +601,20 @@ async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     json_text = json.dumps(lottery, ensure_ascii=False, indent=2)
 
-    # Если текст длиннее лимита Telegram (4096 символов), отправим как файл
     if len(json_text) > 4000:
-        with open("lottery_temp.json", "w", encoding="utf-8") as f:
+        temp_path = "lottery_temp.json"
+        with open(temp_path, "w", encoding="utf-8") as f:
             f.write(json_text)
-        await update.message.reply_document(document=open("lottery_temp.json", "rb"))
+
+        with open(temp_path, "rb") as doc:
+            await update.message.reply_document(document=doc)
+
+        os.remove(temp_path)
     else:
-        await update.message.reply_text(f"Содержимое файла:\n```json\n{json_text}\n```", parse_mode="Markdown")
+        await update.message.reply_text(
+            f"Содержимое файла:\n```json\n{json_text}\n```",
+            parse_mode="Markdown"
+        )
 
 
 async def handle_clear_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
