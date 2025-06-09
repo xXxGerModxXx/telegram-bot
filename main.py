@@ -518,7 +518,7 @@ async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="Markdown"
                 )
             else:
-                temp_path = "lottery_temp.json"
+                temp_path = "lottery.json"
                 with open(temp_path, "w", encoding="utf-8") as f:
                     f.write(json_text)
                 await context.bot.send_document(chat_id=admin_chat_id, document=open(temp_path, "rb"))
@@ -560,7 +560,7 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     user_bal = balances.get(username, {}).get("печеньки", 0)
 
     if user_bal < count:
-        await msg.reply_text(f"Недостаточно печенек. У тебя {user_bal}, нужно {count}.")
+        await msg.reply_text(f"Недостаточно печенек.")
         return
 
     # Вычитаем печеньки
