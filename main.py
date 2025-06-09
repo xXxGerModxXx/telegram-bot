@@ -161,8 +161,10 @@ def save_lottery(data, allow_empty=False):
     if not isinstance(data, dict):
         raise ValueError("save_lottery: данные должны быть словарём.")
 
-    if len(data) == 0 and not allow_empty:
-        logging.warning("Попытка сохранить пустой список билетов. Операция сохранения отменена.")
+    # Дополнительная проверка на реально пустые диапазоны (все диапазоны = [0,0])
+    all_zero_ranges = all(rng == [0, 0] for rng in data.values())
+    if (len(data) == 0 or all_zero_ranges) and not allow_empty:
+        logging.warning("Попытка сохранить пустой или невалидный список билетов. Операция отменена.")
         return
 
     with open(LOTTERY_FILE, 'w', encoding='utf-8') as f:
