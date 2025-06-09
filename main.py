@@ -784,26 +784,27 @@ async def handle_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE
         with open(TRANSACTION_LOG_FILE, "r", encoding="utf-8") as f:
             transactions = json.load(f)
     except FileNotFoundError:
-        await update.message.reply_text("Журнал транзакций пуст.")
+        await update.message.reply_text("Архив пуст.")
         return
 
     if not transactions:
-        await update.message.reply_text("Журнал транзакций пуст.")
+        await update.message.reply_text("Архив пуст.")
         return
 
     # Определяем сколько транзакций показывать
     if len(args) == 1:
-        count = 10  # по умолчанию
+        count = 5  # по умолчанию
+
     elif len(args) == 2:
         if args[1].lower() == "все":
             count = len(transactions)
         elif args[1].isdigit():
             count = int(args[1])
         else:
-            await update.message.reply_text("Неверный формат. Используй: транзакции [все|число]")
+            await update.message.reply_text("Неверный формат. Используй: архив [все|число]")
             return
     else:
-        await update.message.reply_text("Неверный формат. Используй: транзакции [все|число]")
+        await update.message.reply_text("Неверный формат. Используй: архив [все|число]")
         return
 
     # Показываем последние count записей
@@ -885,7 +886,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_top(update, context)
     elif lower_text == "уровень":
         await handle_level_info(update, context)
-    elif lower_text.startswith("транзакции"):
+    elif lower_text.startswith("архив"):
         await handle_transactions(update, context)
 
 
@@ -905,7 +906,7 @@ commands_common = {
     "N <число>": "Купить указанное количество лотерейных билетов",
     "топ": "Топ 5 игроков по печенькам и уровням + топ без админов",
     "уровень": "Информация о шансах и ценах для каждого уровня",
-    "транзакции [все|число]": "Показать последние N или все транзакции (админ)"
+    "архив [все|число]": "Показать последние N или все транзакции (админ)"
 }
 
 
