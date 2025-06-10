@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAGV5w2mv6E5oFTUuPqAFALh3taSnyAzZ_k"
+TOKEN = "7604409638:AAFUMITbTD7muZyOrMjz9MliEhdrwJXWSMc"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -912,13 +912,13 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_update_prices(update, context)
     elif lower_text == "команды":
         await handle_commands(update, context)
-    elif lower_text == "топ":
+    elif lower_text == "топ" or lower_text == "топчик":
         await handle_top(update, context)
     elif lower_text == "уровень":
         await handle_level_info(update, context)
     elif lower_text.startswith("архив"):
         await handle_transactions(update, context)
-    elif any(phrase in lower_text for phrase in {"инфо", "ip", "инфа", "информация", "дайте ip", "скиньте ip", "какое ip"}):
+    elif any(phrase in lower_text for phrase in {"инфо", "ip", "инфа", "информация", "дайте ip", "скиньте ip", "какое ip", "какое ип"}):
         await handle_info_command(update, context)
     elif lower_text.startswith("обнова"):
         await handle_updates(update, context)
@@ -945,6 +945,7 @@ commands_common = {
 UPDATE_LOG = """
 📦 Последние обновления:
 
+✅ Обновлена  фраза  в балансе ️
 ✅ Исправлена команда "N <число>" — покупка билетов 🎟️
 ✅ Команда "баланс" теперь показывает количество билетов
 ✅ Исправлена ошибка с покупкой 1 билета
