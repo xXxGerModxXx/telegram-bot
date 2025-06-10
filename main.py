@@ -158,7 +158,7 @@ def save_lottery(data, allow_empty=False):
         raise ValueError("save_lottery: данные должны быть словарём.")
 
     if not allow_empty and (
-        len(data) == 0 or all(rng[1] - rng[0] < 1 for rng in data.values())
+            len(data) == 0 or all(rng[1] < rng[0] for rng in data.values())
     ):
         logging.warning("Попытка сохранить пустой или невалидный список билетов. Операция отменена.")
         return
@@ -506,7 +506,8 @@ async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not lottery:
             await context.bot.send_message(chat_id=admin_chat_id, text="🎟️ Файл с билетами пуст.")
         else:
-            json_text = json.dumps(lottery, ensure_ascii=False, indent=2)
+            json_text = json.dumps(lottery, ensure_ascii=False, indent=2, separators=(',', ': '))
+
 
             if len(json_text) <= 4000:
                 await context.bot.send_message(
@@ -823,7 +824,8 @@ async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Файл с билетами пуст.")
         return
 
-    json_text = json.dumps(lottery, ensure_ascii=False, indent=2)
+    json_text = json.dumps(lottery, ensure_ascii=False, indent=2, separators=(',', ': '))
+
 
     if len(json_text) > 4000:
         temp_path = "lottery.json"
