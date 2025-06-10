@@ -66,11 +66,7 @@ def start_bot():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))
     print("Бот запущен...")
     app.run_polling()
-def load_lottery():
-    if not os.path.exists(LOTTERY_FILE):
-        return {}
-    with open(LOTTERY_FILE, 'r', encoding='utf-8') as f:
-        return json.load(f)
+
 
 LEVELS_PRICE_FILE = 'levels_price.json'
 
@@ -532,111 +528,7 @@ async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-def safe_load_lottery():
-    try:
-        with open("lottery.json", "r", encoding="utf-8") as f:
-            content = f.read().strip()
-            if not content:
-                return {}
-            return json.loads(content)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
 
-
-async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    username = get_username_from_message(msg)
-    text = msg.text.strip()
-
-    match = re.match(r'^N\s+(\d+)$', text, re.IGNORECASE)
-    if not match:
-        return
-
-    count = int(match.group(1))
-    if count <= 0:
-        await msg.reply_text("Количество билетов должно быть больше нуля.")
-        return
-
-    balances = load_balances()
-    user_bal = balances.get(username, {}).get("печеньки", 0)
-
-    if user_bal < count:
-        await msg.reply_text(f"Недостаточно печенек.")
-        return
-
-    # Вычитаем печеньки
-    balances.setdefault(username, {}).setdefault("печеньки", 0)
-    balances[username]["печеньки"] -= count
-    save_balances(balances)
-
-    # Загрузка текущих билетов
-    lottery = load_lottery()
-    ordered = list(lottery.items())
-
-    # Найдём текущего пользователя и его количество билетов
-    current_index = next((i for i, (user, _) in enumerate(ordered) if user == username), None)
-    previous_tickets = 0
-
-    if current_index is not None:
-        prev_range = ordered[current_index][1]
-        previous_tickets = prev_range[1] - prev_range[0] + 1
-        ordered.pop(current_index)  # удаляем старую запись, чтобы пересчитать
-    else:
-        previous_tickets = 0
-    ordered.append((username, [0, 0]))  # добавим пользователя в конец списка
-    current_index = len(ordered) - 1
-
-    total_tickets = previous_tickets + count
-
-    # Пересчитываем все диапазоны заново
-    current_number = 1
-    for i, (user, rng) in enumerate(ordered):
-        if user == username:
-            new_range = [current_number, current_number + total_tickets - 1]
-        else:
-            ticket_count = rng[1] - rng[0] + 1
-            new_range = [current_number, current_number + ticket_count - 1]
-        ordered[i] = (user, new_range)
-        current_number = new_range[1] + 1
-
-    updated_lottery = {user: rng for user, rng in ordered}
-    save_lottery(updated_lottery)
-
-    user_range = updated_lottery[username]
-    await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪")
-
-
-
-import os
-import json
-
-async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    username = get_username_from_message(update.message)
-    if username != f"@{ADMIN_USERNAME}":
-        await update.message.reply_text("Эта команда доступна только админу.")
-        return
-
-    lottery = load_lottery()
-    if not lottery:
-        await update.message.reply_text("Файл с билетами пуст.")
-        return
-
-    json_text = json.dumps(lottery, ensure_ascii=False, indent=2)
-
-    if len(json_text) > 4000:
-        temp_path = "lottery.json"
-        with open(temp_path, "w", encoding="utf-8") as f:
-            f.write(json_text)
-
-        with open(temp_path, "rb") as doc:
-            await update.message.reply_document(document=doc)
-
-        os.remove(temp_path)
-    else:
-        await update.message.reply_text(
-            f"Содержимое файла:\n```json\n{json_text}\n```",
-            parse_mode="Markdown"
-        )
 
 async def handle_clear_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if get_username_from_message(update.message) != f"@{ADMIN_USERNAME}":
@@ -842,6 +734,111 @@ async def handle_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         disable_web_page_preview=True
     )
 
+def safe_load_lottery():
+    try:
+        with open("lottery.json", "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if not content:
+                return {}
+            return json.loads(content)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    username = get_username_from_message(msg)
+    text = msg.text.strip()
+
+    match = re.match(r'^N\s+(\d+)$', text, re.IGNORECASE)
+    if not match:
+        return
+
+    count = int(match.group(1))
+    if count <= 0:
+        await msg.reply_text("Количество билетов должно быть больше нуля.")
+        return
+
+    balances = load_balances()
+    user_bal = balances.get(username, {}).get("печеньки", 0)
+
+    if user_bal < count:
+        await msg.reply_text(f"Недостаточно печенек.")
+        return
+
+    # Вычитаем печеньки
+    balances.setdefault(username, {}).setdefault("печеньки", 0)
+    balances[username]["печеньки"] -= count
+    save_balances(balances)
+
+    # Загрузка текущих билетов
+    lottery =safe_load_lottery()
+    ordered = list(lottery.items())
+
+    # Найдём текущего пользователя и его количество билетов
+    current_index = next((i for i, (user, _) in enumerate(ordered) if user == username), None)
+    previous_tickets = 0
+
+    if current_index is not None:
+        prev_range = ordered[current_index][1]
+        previous_tickets = prev_range[1] - prev_range[0] + 1
+        ordered.pop(current_index)
+    else:
+        previous_tickets = 0
+
+    total_tickets = previous_tickets + count
+    # Добавим пользователя в конец
+    ordered.append((username, [0, 0]))  # добавим позже, но без риска
+
+    # Пересчёт
+    current_number = 1
+    for i, (user, rng) in enumerate(ordered):
+        if user == username:
+            new_range = [current_number, current_number + total_tickets - 1]
+        else:
+            ticket_count = rng[1] - rng[0] + 1
+            new_range = [current_number, current_number + ticket_count - 1]
+        ordered[i] = (user, new_range)
+        current_number = new_range[1] + 1
+
+    updated_lottery = {user: rng for user, rng in ordered}
+    save_lottery(updated_lottery)
+
+    user_range = updated_lottery[username]
+    await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪")
+
+
+
+import os
+import json
+
+async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = get_username_from_message(update.message)
+    if username != f"@{ADMIN_USERNAME}":
+        await update.message.reply_text("Эта команда доступна только админу.")
+        return
+
+    lottery =safe_load_lottery()
+    if not lottery:
+        await update.message.reply_text("Файл с билетами пуст.")
+        return
+
+    json_text = json.dumps(lottery, ensure_ascii=False, indent=2)
+
+    if len(json_text) > 4000:
+        temp_path = "lottery.json"
+        with open(temp_path, "w", encoding="utf-8") as f:
+            f.write(json_text)
+
+        with open(temp_path, "rb") as doc:
+            await update.message.reply_document(document=doc)
+
+        os.remove(temp_path)
+    else:
+        await update.message.reply_text(
+            f"Содержимое файла:\n```json\n{json_text}\n```",
+            parse_mode="Markdown"
+        )
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
