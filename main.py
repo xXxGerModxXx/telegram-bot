@@ -217,12 +217,16 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     level = user_balances.get("уровень", 1)
 
-    lines = [f"{username}, твой баланс:",
+    lines = [f"Милашка {username}, вот твой балансик:",
              f"Уровень: {level}"]
 
     for curr, emoji in CURRENCIES.items():
         amount = user_balances.get(curr, 0)
         lines.append(f"{amount} {curr} {emoji}")
+    await update.message.reply_text(
+        f"[DEBUG]\nusername: {username}\n"
+        f"lottery keys: {list(safe_load_lottery().keys())}"
+    )
 
     # 🎟 Добавим количество билетов из лотереи
     lottery = safe_load_lottery()
@@ -230,7 +234,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ticket_range and isinstance(ticket_range, list) and len(ticket_range) == 2:
         ticket_count = ticket_range[1] - ticket_range[0] + 1
         if ticket_count > 0:
-            lines.append(f"{ticket_count} 🎟️ лотерейных билетов")
+            lines.append(f"{ticket_count} лотерейных билетов 🎟️ ")
 
     await update.message.reply_text("\n".join(lines))
 
@@ -814,6 +818,8 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     user_range = updated_lottery[username]
     await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪")
 
+async def handle_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(UPDATE_LOG.strip())
 
 
 import os
@@ -909,10 +915,12 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_transactions(update, context)
     elif any(phrase in lower_text for phrase in {"инфо", "ip", "инфа", "информация", "дайте ip", "скиньте ip", "какое ip"}):
         await handle_info_command(update, context)
-
+    elif lower_text.startswith("обнова"):
+        await handle_updates(update, context)
 
 
 commands_common = {
+    "обнова": "Показать список обновлений",
     "баланс": "Показать текущий баланс и уровень",
     "дать <число>": "Передать печеньки другому игроку",
     "дар <число>": "Передать печеньки от администратора (админ)",
@@ -929,6 +937,14 @@ commands_common = {
     "уровень": "Информация о шансах и ценах для каждого уровня",
     "архив [все|число]": "Показать последние N или все транзакции (админ)"
 }
+UPDATE_LOG = """
+📦 Последние обновления:
+
+✅ Исправлена команда "N <число>" — покупка билетов 🎟️
+✅ Команда "баланс" теперь показывает количество билетов
+✅ Исправлена ошибка с покупкой 1 билета
+🛠 Оптимизирована функция сохранения лотереи
+"""
 
 
 
