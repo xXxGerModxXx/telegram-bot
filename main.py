@@ -223,10 +223,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for curr, emoji in CURRENCIES.items():
         amount = user_balances.get(curr, 0)
         lines.append(f"{amount} {curr} {emoji}")
-    await update.message.reply_text(
-        f"[DEBUG]\nusername: {username}\n"
-        f"lottery keys: {list(safe_load_lottery().keys())}"
-    )
+
 
     # 🎟 Добавим количество билетов из лотереи
     lottery = safe_load_lottery()
@@ -814,6 +811,14 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
 
     updated_lottery = {user: rng for user, rng in ordered}
     save_lottery(updated_lottery)
+    log_transaction({
+        "timestamp": datetime.utcnow().isoformat(),
+        "type": "Лото-Печенько-Рея",
+        "from": username,
+        "to": "лотерея",
+        "currency": "печеньки",
+        "amount": count
+    })
 
     user_range = updated_lottery[username]
     await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪")
