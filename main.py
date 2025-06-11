@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAFBKAqEP5-ZDAxjemXTHKjUEwz7yvftDSc"
+TOKEN = "7604409638:AAFVxwZ1_4sPNHFBfxDfL4mV-bkQmP-UlBo"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -243,10 +243,10 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for resource_short, resource_name in RESOURCES.items():
         index = list(RESOURCES.keys()).index(resource_short)
         amount = resources[index]
-        lines.append(f"  {amount} {resource_name} ({resource_short})")
+        limit = RESOURCE_LIMITS[resource_short](level)  # Получаем лимит для ресурса
+        lines.append(f"  {amount}/{limit} {resource_name} ({resource_short})")
 
     await update.message.reply_text("\n".join(lines))
-
 
 def can_farm_today(last_farm_str: str) -> bool:
     """Проверяет, можно ли фармить сегодня, сравнивая даты"""
@@ -887,6 +887,15 @@ RESOURCES = {
     "и": "Изумруды",
     "р": "Золотая печенька"  # 🌟
 }
+RESOURCE_LIMITS = {
+    "к": lambda level: level,  # Какао-бобы: 1 * уровень
+    "п": lambda level: level,  # Пшеница: 1 * уровень
+    "ж": lambda level: 10 * level,  # Железо: 10 * уровень
+    "а": lambda level: 3 * level,  # Алмазы: 3 * уровень
+    "з": lambda level: 5 * level,  # Золото: 5 * уровень
+    "и": lambda level: level,  # Изумруды: 1 * уровень
+    "р": lambda level: level  # Золотая печенька: 1 * уровень
+}
 def get_user_resources(username, balances):
     user_data = balances.get(username, {})
     resources_str = user_data.get("ресурсы", "0/0/0/0/0/0/0")
@@ -940,9 +949,18 @@ async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TY
     recipient_resources = get_user_resources(recipient, balances)
 
     resource_index = list(RESOURCES.keys()).index(resource_short)
+    sender_level = balances[sender].get("уровень", 1)
+    recipient_level = balances[recipient].get("уровень", 1)
+
+    sender_limit = RESOURCE_LIMITS[resource_short](sender_level)
+    recipient_limit = RESOURCE_LIMITS[resource_short](recipient_level)
 
     if sender_resources[resource_index] < amount:
         await msg.reply_text(f"У тебя недостаточно {resource_name}.")
+        return
+
+    if recipient_resources[resource_index] + amount > recipient_limit:
+        await msg.reply_text(f"У {recipient} нет места для {amount} {resource_name}.")
         return
 
     # Списываем у отправителя
@@ -987,8 +1005,14 @@ async def handle_give_admin_resources(update: Update, context: ContextTypes.DEFA
     recipient = f"@{recipient_tag}"
     balances = load_balances()
     recipient_resources = get_user_resources(recipient, balances)
+    recipient_level = balances[recipient].get("уровень", 1)
 
     resource_index = list(RESOURCES.keys()).index(resource_short)
+    recipient_limit = RESOURCE_LIMITS[resource_short](recipient_level)
+
+    if recipient_resources[resource_index] + amount > recipient_limit:
+        await msg.reply_text(f"У {recipient} нет места для {amount} {resource_name}.")
+        return
 
     recipient_resources[resource_index] += amount
     update_user_resources(recipient, balances, recipient_resources)
@@ -1030,7 +1054,11 @@ async def handle_take_admin_resources(update: Update, context: ContextTypes.DEFA
 
     resource_index = list(RESOURCES.keys()).index(resource_short)
 
-    recipient_resources[resource_index] = max(0, recipient_resources[resource_index] - amount)
+    if recipient_resources[resource_index] < amount:
+        await msg.reply_text(f"У {recipient} недостаточно {amount} {resource_name}.")
+        return
+
+    recipient_resources[resource_index] -= amount
     update_user_resources(recipient, balances, recipient_resources)
 
     await msg.reply_text(f"{recipient} лишился {amount} {resource_name}.")
@@ -1097,7 +1125,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_info_command(update, context)
     elif lower_text.startswith("обнова"):
         await handle_updates(update, context)
-    elif lower_text == "kode365":
+    elif lower_text == "kode365":             # ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
         await update.message.reply_text("@hto_i_taki промик нашли!")
     elif lower_text.startswith("рес дать"):
         await handle_give_resources(update, context)
@@ -1106,7 +1134,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif lower_text.startswith("рес отнять"):
         await handle_take_admin_resources(update, context)
 commands_common = {
-    "рес дать <число> <ресурс>": "Передать ресурс другому игроку",
+
     "рес дар <число> <ресурс>": "Передать ресурс от администратора (админ)",
     "рес отнять <число> <ресурс>": "Отнять ресурс у игрока (админ)",
     "обнова": "Показать список обновлений",
@@ -1124,7 +1152,8 @@ commands_common = {
     "N <число>": "Купить указанное количество лотерейных билетов",
     "топ": "Топ 5 игроков по печенькам и уровням + топ без админов",
     "уровень": "Информация о шансах и ценах для каждого уровня",
-    "архив [все|число]": "Показать последние N или все транзакции (админ)"
+    "архив [все|число]": "Показать последние N или все транзакции (админ)",
+    "рес дать <число> <ресурс(одной буквой)>": "Передать ресурс другому игроку"
 }
 UPDATE_LOG = """
 📦 Последние обновления:
