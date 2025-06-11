@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAFUMITbTD7muZyOrMjz9MliEhdrwJXWSMc"
+TOKEN = "7604409638:AAGhG_v7ByNXfUWKJwROGIif_rNAjH4a8Nk"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -152,19 +152,21 @@ async def handle_update_prices(update: Update, context: ContextTypes.DEFAULT_TYP
     save_levels_price(new_prices)
 
     await update.message.reply_text(f"Цены успешно обновлены: {prices_str}")
+lottery_lock = threading.Lock()
 
 def save_lottery(data, allow_empty=False):
     if not isinstance(data, dict):
         raise ValueError("save_lottery: данные должны быть словарём.")
 
     if not allow_empty and (
-            len(data) == 0 or all(rng[1] < rng[0] for rng in data.values())
+        len(data) == 0 or all(rng[1] < rng[0] for rng in data.values())
     ):
         logging.warning("Попытка сохранить пустой или невалидный список билетов. Операция отменена.")
         return
 
-    with open(LOTTERY_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    with lottery_lock:
+        with open(LOTTERY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2, separators=(',', ': '))
 
 
 
@@ -360,10 +362,16 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "currency": currency,
         "amount": amount
     })
-    await msg.reply_text(
-        f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}.\n"
+    if random.randint(1,100)<40:
+        await msg.reply_text(
+            f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}. Промокод KODE365\n"
 
-    )
+        )
+    else:
+        await msg.reply_text(
+        f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}.\n"
+    
+        )
 
 
 
@@ -743,14 +751,16 @@ async def handle_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 def safe_load_lottery():
-    try:
-        with open("lottery.json", "r", encoding="utf-8") as f:
-            content = f.read().strip()
-            if not content:
-                return {}
-            return json.loads(content)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    with lottery_lock:
+        try:
+            with open(LOTTERY_FILE, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if not content:
+                    return {}
+                return json.loads(content)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
 
 
 async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -944,7 +954,7 @@ commands_common = {
 }
 UPDATE_LOG = """
 📦 Последние обновления:
-
+✅ Добавлена доп защита от отката в билетах ️
 ✅ Обновлена  фраза  в балансе ️
 ✅ Исправлена команда "N <число>" — покупка билетов 🎟️
 ✅ Команда "баланс" теперь показывает количество билетов
