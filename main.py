@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAGejgwIDKbw0NUu0QzOV43WRqK-dRb7Rlw"
+TOKEN = "7604409638:AAG9xdivHIi14MtMpwsk4YZtYCeeqABsyys"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -214,6 +214,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Инициализируем нового игрока с уровнем 1 и нулём по валютам
         user_balances = {"уровень": 1}
         user_balances.update({curr: 0 for curr in CURRENCIES})
+        user_balances.update({"ресурсы": "0/0/0/0/0/0/0"})  # Добавляем ресурсы
         balances[username] = user_balances
         save_balances(balances)  # сохраняем в файл
 
@@ -226,7 +227,6 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = user_balances.get(curr, 0)
         lines.append(f"{amount} {curr} {emoji}")
 
-
     # 🎟 Добавим количество билетов из лотереи
     lottery = safe_load_lottery()
     ticket_range = lottery.get(username)
@@ -234,11 +234,17 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ticket_count = ticket_range[1] - ticket_range[0] + 1
         if ticket_count > 0:
             lines.append(f"{ticket_count} лотерейных билетов 🎟️ ")
-    lines.append(f"Ресурсы:")
+
+    # Добавляем отображение ресурсов
+    resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
+    resources = list(map(int, resources_str.split('/')))
+
+    lines.append("\nРесурсы:")
     for resource_short, resource_name in RESOURCES.items():
         index = list(RESOURCES.keys()).index(resource_short)
         amount = resources[index]
         lines.append(f"  {amount} {resource_name} ({resource_short})")
+
     await update.message.reply_text("\n".join(lines))
 
 
