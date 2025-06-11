@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAHaRKMuVlOKpqBiOWhRAFf4v3e8dY5vH5M"
+TOKEN = "7604409638:AAHrS-oxE44ULDObzL_3ceQ9abbEvLr8CzQ"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -145,7 +145,7 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Логируем действие
     log_transaction({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "type": "повысить уровень",
         "username": username,
         "from_level": current_level,
@@ -383,7 +383,7 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # Логируем
     log_transaction({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "type": "хочу печеньки",
         "to": username,
         "currency": "печеньки",
@@ -456,7 +456,7 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     save_balances(balances)
     log_transaction({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "type": "дать",
         "from": sender,
         "to": recipient,
@@ -511,7 +511,7 @@ async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     save_balances(balances)
     log_transaction({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "type": "дар",
         "from": "Администрация",
         "to": recipient,
@@ -561,7 +561,7 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     save_balances(balances)
     log_transaction({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "type": "отнять",
         "from": "Администрация",
         "to": recipient,
@@ -918,7 +918,7 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     updated_lottery = {user: rng for user, rng in ordered}
     save_lottery(updated_lottery)
     log_transaction({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
         "type": "Лото-Печенько-Рея",
         "from": username,
         "to": "лотерея",
@@ -1193,7 +1193,7 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resources[cookie_index] += amount
 
         log_transaction({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
             "type": "крафт",
             "username": username,
             "resource": "печенька",
@@ -1217,7 +1217,7 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 resources[cookie_index] += amount
 
                 log_transaction({
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
                     "type": "крафт",
                     "username": username,
                     "resource": "печенька",
@@ -1233,7 +1233,7 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resources[gold_cookie_index] += amount
 
         log_transaction({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
             "type": "крафт",
             "username": username,
             "resource": "золотая печенька",
