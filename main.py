@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAGhG_v7ByNXfUWKJwROGIif_rNAjH4a8Nk"
+TOKEN = "7604409638:AAGejgwIDKbw0NUu0QzOV43WRqK-dRb7Rlw"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -234,7 +234,11 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ticket_count = ticket_range[1] - ticket_range[0] + 1
         if ticket_count > 0:
             lines.append(f"{ticket_count} лотерейных билетов 🎟️ ")
-
+    lines.append(f"Ресурсы:")
+    for resource_short, resource_name in RESOURCES.items():
+        index = list(RESOURCES.keys()).index(resource_short)
+        amount = resources[index]
+        lines.append(f"  {amount} {resource_name} ({resource_short})")
     await update.message.reply_text("\n".join(lines))
 
 
@@ -370,7 +374,7 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await msg.reply_text(
         f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}.\n"
-    
+
         )
 
 
@@ -868,7 +872,162 @@ async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"Содержимое файла:\n```json\n{json_text}\n```",
             parse_mode="Markdown"
         )
+RESOURCES = {
+    "к": "Какао-бобы",
+    "п": "Пшеница",
+    "ж": "Железо",
+    "а": "Алмазы",
+    "з": "Золото",
+    "и": "Изумруды",
+    "р": "Золотая печенька"  # 🌟
+}
+def get_user_resources(username, balances):
+    user_data = balances.get(username, {})
+    resources_str = user_data.get("ресурсы", "0/0/0/0/0/0/0")
+    return list(map(int, resources_str.split('/')))
+def update_user_resources(username, balances, resources):
+    resources_str = '/'.join(map(str, resources))
+    if username not in balances:
+        balances[username] = {}
+    balances[username]["ресурсы"] = resources_str
+    save_balances(balances)
+async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    text = msg.text.strip()
 
+    # Удаляем префикс "рес дать" и обрабатываем оставшуюся часть
+    command = text.replace("рес дать", "").strip()
+    match = re.match(r'^(\d+)\s+(\w)', command, re.IGNORECASE)
+    if not match:
+        await msg.reply_text("Неверный формат. Используйте: рес дать <количество> <ресурс>")
+        return
+
+    amount = int(match.group(1))
+    resource_short = match.group(2).lower()
+
+    if resource_short not in RESOURCES:
+        await msg.reply_text("Неизвестный ресурс.")
+        return
+
+    resource_name = RESOURCES[resource_short]
+    sender = get_username_from_message(msg)
+    recipient_tag = None
+
+    recipient_match = re.search(r'@(\w+)', command)
+    if recipient_match:
+        recipient_tag = recipient_match.group(1)
+    elif msg.reply_to_message:
+        recipient_tag = msg.reply_to_message.from_user.username
+
+    if not recipient_tag:
+        await msg.reply_text("Укажи получателя или ответь на его сообщение.")
+        return
+
+    recipient = f"@{recipient_tag}"
+
+    if sender == recipient:
+        await msg.reply_text("Нельзя переводить себе ресурсы!")
+        return
+
+    balances = load_balances()
+    sender_resources = get_user_resources(sender, balances)
+    recipient_resources = get_user_resources(recipient, balances)
+
+    resource_index = list(RESOURCES.keys()).index(resource_short)
+
+    if sender_resources[resource_index] < amount:
+        await msg.reply_text(f"У тебя недостаточно {resource_name}.")
+        return
+
+    # Списываем у отправителя
+    sender_resources[resource_index] -= amount
+    update_user_resources(sender, balances, sender_resources)
+
+    # Начисляем получателю
+    recipient_resources[resource_index] += amount
+    update_user_resources(recipient, balances, recipient_resources)
+
+    await msg.reply_text(f"{sender} перевёл {amount} {resource_name} {recipient}.")
+async def handle_give_admin_resources(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if msg.from_user.username != ADMIN_USERNAME:
+        return
+
+    text = msg.text.strip()
+
+    # Удаляем префикс "рес дар" и обрабатываем оставшуюся часть
+    command = text.replace("рес дар", "").strip()
+    match = re.match(r'^(\d+)\s+(\w)(?:\s+@(\w+))?', command, re.IGNORECASE)
+    if not match:
+        return
+
+    amount = int(match.group(1))
+    resource_short = match.group(2).lower()
+    recipient_tag = match.group(3)
+
+    if resource_short not in RESOURCES:
+        await msg.reply_text("Неизвестный ресурс.")
+        return
+
+    resource_name = RESOURCES[resource_short]
+
+    if not recipient_tag and msg.reply_to_message:
+        recipient_tag = msg.reply_to_message.from_user.username
+
+    if not recipient_tag:
+        await msg.reply_text("Укажи получателя или ответь на его сообщение.")
+        return
+
+    recipient = f"@{recipient_tag}"
+    balances = load_balances()
+    recipient_resources = get_user_resources(recipient, balances)
+
+    resource_index = list(RESOURCES.keys()).index(resource_short)
+
+    recipient_resources[resource_index] += amount
+    update_user_resources(recipient, balances, recipient_resources)
+
+    await msg.reply_text(f"{recipient} получил {amount} {resource_name} от администрации.")
+async def handle_take_admin_resources(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if msg.from_user.username != ADMIN_USERNAME:
+        return
+
+    text = msg.text.strip()
+
+    # Удаляем префикс "рес отнять" и обрабатываем оставшуюся часть
+    command = text.replace("рес отнять", "").strip()
+    match = re.match(r'^(\d+)\s+(\w)(?:\s+@(\w+))?', command, re.IGNORECASE)
+    if not match:
+        return
+
+    amount = int(match.group(1))
+    resource_short = match.group(2).lower()
+    recipient_tag = match.group(3)
+
+    if resource_short not in RESOURCES:
+        await msg.reply_text("Неизвестный ресурс.")
+        return
+
+    resource_name = RESOURCES[resource_short]
+
+    if not recipient_tag and msg.reply_to_message:
+        recipient_tag = msg.reply_to_message.from_user.username
+
+    if not recipient_tag:
+        await msg.reply_text("Укажи получателя или ответь на его сообщение.")
+        return
+
+    recipient = f"@{recipient_tag}"
+    balances = load_balances()
+    recipient_resources = get_user_resources(recipient, balances)
+
+    resource_index = list(RESOURCES.keys()).index(resource_short)
+
+    recipient_resources[resource_index] = max(0, recipient_resources[resource_index] - amount)
+    update_user_resources(recipient, balances, recipient_resources)
+
+    await msg.reply_text(f"{recipient} лишился {amount} {resource_name}.")
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -932,9 +1091,18 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_info_command(update, context)
     elif lower_text.startswith("обнова"):
         await handle_updates(update, context)
-
-
+    elif lower_text == "kode365":
+        await update.message.reply_text("@hto_i_taki промик нашли!")
+    elif lower_text.startswith("рес дать"):
+        await handle_give_resources(update, context)
+    elif lower_text.startswith("рес дар"):
+        await handle_give_admin_resources(update, context)
+    elif lower_text.startswith("рес отнять"):
+        await handle_take_admin_resources(update, context)
 commands_common = {
+    "рес дать <число> <ресурс>": "Передать ресурс другому игроку",
+    "рес дар <число> <ресурс>": "Передать ресурс от администратора (админ)",
+    "рес отнять <число> <ресурс>": "Отнять ресурс у игрока (админ)",
     "обнова": "Показать список обновлений",
     "баланс": "Показать текущий баланс и уровень",
     "дать <число>": "Передать печеньки другому игроку",
@@ -954,6 +1122,8 @@ commands_common = {
 }
 UPDATE_LOG = """
 📦 Последние обновления:
+
+✅ Добавлена Пшеница, Какао-бобы, железо, золото, алмазы, изумруды ️
 ✅ Добавлена доп защита от отката в билетах ️
 ✅ Обновлена  фраза  в балансе ️
 ✅ Исправлена команда "N <число>" — покупка билетов 🎟️
