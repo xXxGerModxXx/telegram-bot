@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAFVxwZ1_4sPNHFBfxDfL4mV-bkQmP-UlBo"
+TOKEN = "7604409638:AAHaRKMuVlOKpqBiOWhRAFf4v3e8dY5vH5M"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -99,7 +99,7 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     current_level = user_balances.get("уровень", 1)
-    if current_level >= 10:
+    if current_level >= 20:
         await update.message.reply_text("Вы уже достигли максимального уровня!")
         return
 
@@ -112,16 +112,48 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     current_cookies = user_balances.get("печеньки", 0)
+    resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
+    resources = list(map(int, resources_str.split('/')))
+
+    gold_cookies_index = list(RESOURCES.keys()).index("р")
+    diamonds_index = list(RESOURCES.keys()).index("а")
+
+    required_gold_cookies = 10 * (current_level - 9) if current_level >= 10 else 0
+    required_diamonds = 10 * (current_level - 9) if current_level >= 10 else 0
+
+    if current_level >= 10:
+        if resources[gold_cookies_index] < required_gold_cookies:
+            await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {required_gold_cookies} золотых печений.")
+            return
+        if resources[diamonds_index] < required_diamonds:
+            await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {required_diamonds} алмазов.")
+            return
 
     if current_cookies < price:
-        await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {price} печенек")
+        await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {price} печенек.")
         return
 
-    # Отнимаем печеньки и повышаем уровень
+    # Отнимаем ресурсы и повышаем уровень
     user_balances["печеньки"] = current_cookies - price
+    if current_level >= 10:
+        resources[gold_cookies_index] -= required_gold_cookies
+        resources[diamonds_index] -= required_diamonds
     user_balances["уровень"] = current_level + 1
+    user_balances["ресурсы"] = "/".join(map(str, resources))
     balances[username] = user_balances
     save_balances(balances)
+
+    # Логируем действие
+    log_transaction({
+        "timestamp": datetime.utcnow().isoformat(),
+        "type": "повысить уровень",
+        "username": username,
+        "from_level": current_level,
+        "to_level": current_level + 1,
+        "cookies_spent": price,
+        "gold_cookies_spent": required_gold_cookies if current_level >= 10 else 0,
+        "diamonds_spent": required_diamonds if current_level >= 10 else 0
+    })
 
     await update.message.reply_text(f"Поздравляю! Вы повысили уровень до {next_level} и потратили {price} печенек.")
 async def handle_update_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -245,8 +277,10 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = resources[index]
         limit = RESOURCE_LIMITS[resource_short](level)  # Получаем лимит для ресурса
         lines.append(f"  {amount}/{limit} {resource_name} ({resource_short})")
-
-    await update.message.reply_text("\n".join(lines))
+    if random.randint(1,100)<20:
+        await update.message.reply_text("\n промокод: GerMod_and_Cat".join(lines))
+    else:
+        await update.message.reply_text("\n".join(lines))
 
 def can_farm_today(last_farm_str: str) -> bool:
     """Проверяет, можно ли фармить сегодня, сравнивая даты"""
@@ -261,6 +295,8 @@ def can_farm_today(last_farm_str: str) -> bool:
     return now.date() > last_farm.date()
 from datetime import datetime
 
+import random
+
 async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
     balances = load_balances()
@@ -270,6 +306,7 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Если юзер новый, инициализируем
         user_balances = {"уровень": 1}
         user_balances.update({curr: 0 for curr in CURRENCIES})
+        user_balances.update({"ресурсы": "0/0/0/0/0/0/0"})  # Добавляем ресурсы
         balances[username] = user_balances
 
     # Проверяем, когда последний фарм
@@ -287,6 +324,59 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Обновляем время последнего фарма
     user_balances["последний фарм"] = datetime.now().strftime("%H:%M %d-%m-%Y")
 
+    # Получаем ресурсы пользователя
+    resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
+    resources = list(map(int, resources_str.split('/')))
+
+    # Шансы на получение ресурсов
+    messages = []
+
+    if level >= 2:
+        gold_chance = 25 - 5 * level
+        if random.randint(1, 100) <= gold_chance:
+            resources[4] += 1  # Индекс золота
+            messages.append(f"Вы получили 1 золото! (Шанс: {gold_chance}%)")
+
+    iron_chance = 20 + 5 * level
+    iron_count = 1
+    if iron_chance > 100:
+        resources[2] += 1  # Индекс железа
+        iron_count += 1
+        iron_chance -= 100
+        if random.randint(1, 100) <= iron_chance:
+            resources[2] += 1
+            iron_count += 1
+    messages.append(f"Вы получили {iron_count} железа! (Шанс: {iron_chance}%)")
+
+    if random.randint(1, 100) <= 1:  # 1% шанс получить 10 печений
+        user_balances["печеньки"] += 10
+        messages.append("Вы получили 10 дополнительных печений! (Шанс: 1%)")
+
+    wheat_chance = 50 - 5 * level
+    if random.randint(1, 100) <= wheat_chance:
+        resources[1] += 1  # Индекс пшеницы
+        messages.append(f"Вы получили 1 пшеницу! (Шанс: {wheat_chance}%)")
+
+    cocoa_chance = 5
+    if random.randint(1, 100) <= cocoa_chance:
+        resources[0] += 1  # Индекс какао-бобов
+        messages.append(f"Вы получили 1 какао-боб! (Шанс: {cocoa_chance}%)")
+
+    if 2 <= level <= 5:
+        diamond_chance = 30 - 5 * level
+        if random.randint(1, 100) <= diamond_chance:
+            resources[3] += 1  # Индекс алмазов
+            messages.append(f"Вы получили 1 алмаз! (Шанс: {diamond_chance}%)")
+
+    if 1 <= level <= 10:
+        emerald_chance = 3
+        if random.randint(1, 100) <= emerald_chance:
+            resources[5] += 1  # Индекс изумрудов
+            messages.append(f"Вы получили 1 изумруд! (Шанс: {emerald_chance}%)")
+
+    # Обновляем ресурсы пользователя
+    user_balances["ресурсы"] = "/".join(map(str, resources))
+
     # Сохраняем обновления
     balances[username] = user_balances
     save_balances(balances)
@@ -300,8 +390,9 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
         "amount": cookies
     })
 
-    await update.message.reply_text(f"Вы получили {cookies} 🍪 печенек! Ваш уровень: {level}")
-
+    # Отправляем сообщения о добыче ресурсов
+    messages.insert(0, f"Вы получили {cookies} 🍪 печенек! Ваш уровень: {level}")
+    await update.message.reply_text("\n".join(messages))
 
 async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -372,16 +463,11 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "currency": currency,
         "amount": amount
     })
-    if random.randint(1,100)<40:
-        await msg.reply_text(
-            f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}. Промокод KODE365\n"
 
-        )
-    else:
-        await msg.reply_text(
-        f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}.\n"
+    await msg.reply_text(
+    f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}.\n"
 
-        )
+    )
 
 
 
@@ -1062,6 +1148,107 @@ async def handle_take_admin_resources(update: Update, context: ContextTypes.DEFA
     update_user_resources(recipient, balances, recipient_resources)
 
     await msg.reply_text(f"{recipient} лишился {amount} {resource_name}.")
+import re
+
+async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    text = msg.text.strip()
+
+    # Разбиваем команду на части
+    match = re.match(r'^крафт\s+(\d+)\s+(печеньки|золотых печеньек)', text, re.IGNORECASE)
+    if not match:
+        await msg.reply_text("Неверный формат. Используйте: крафт <количество> <печеньки|золотых печеньек>")
+        return
+
+    amount = int(match.group(1))
+    craft_type = match.group(2).lower()
+
+    username = get_username_from_message(msg)
+    balances = load_balances()
+    user_balances = balances.get(username)
+
+    if user_balances is None:
+        await msg.reply_text("Вы не зарегистрированы. Начните с команды /start.")
+        return
+
+    resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
+    resources = list(map(int, resources_str.split('/')))
+
+    # Индексы ресурсов
+    wheat_index = list(RESOURCES.keys()).index("п")
+    cocoa_index = list(RESOURCES.keys()).index("к")
+    cookie_index = list(RESOURCES.keys()).index("печенька")
+    gold_cookie_index = list(RESOURCES.keys()).index("р")
+
+    # Крафт обычных печений
+    if craft_type == "печеньки":
+        required_wheat = 2 * amount
+        required_cocoa = 1 * amount
+        if resources[wheat_index] < required_wheat or resources[cocoa_index] < required_cocoa:
+            await msg.reply_text(f"У вас недостаточно ресурсов для крафта {amount} обычных печений.")
+            return
+
+        resources[wheat_index] -= required_wheat
+        resources[cocoa_index] -= required_cocoa
+        resources[cookie_index] += amount
+
+        log_transaction({
+            "timestamp": datetime.utcnow().isoformat(),
+            "type": "крафт",
+            "username": username,
+            "resource": "печенька",
+            "amount": amount
+        })
+
+        await msg.reply_text(f"Вы скрафтили {amount} обычных печений.")
+
+    # Крафт золотых печений
+    elif craft_type == "золотых печеньек":
+        required_wheat = 2 * amount
+        required_cocoa = 1 * amount
+        required_cookies = 1 * amount
+        if resources[wheat_index] < required_wheat or resources[cocoa_index] < required_cocoa or resources[cookie_index] < required_cookies:
+            if resources[wheat_index] < required_wheat or resources[cocoa_index] < required_cocoa:
+                await msg.reply_text(f"У вас недостаточно ресурсов для крафта {amount} золотых печений.")
+                return
+            else:
+                resources[wheat_index] -= required_wheat
+                resources[cocoa_index] -= required_cocoa
+                resources[cookie_index] += amount
+
+                log_transaction({
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "type": "крафт",
+                    "username": username,
+                    "resource": "печенька",
+                    "amount": amount
+                })
+
+                await msg.reply_text(f"У вас недостаточно золота для крафта {amount} золотых печений. Скрафтили {amount} обычных печений.")
+                return
+
+        resources[wheat_index] -= required_wheat
+        resources[cocoa_index] -= required_cocoa
+        resources[cookie_index] -= required_cookies
+        resources[gold_cookie_index] += amount
+
+        log_transaction({
+            "timestamp": datetime.utcnow().isoformat(),
+            "type": "крафт",
+            "username": username,
+            "resource": "золотая печенька",
+            "amount": amount
+        })
+
+        await msg.reply_text(f"Вы скрафтили {amount} золотых печений.")
+
+    else:
+        await msg.reply_text("Неизвестный тип крафта. Доступные типы: 'печеньки', 'золотых печений'.")
+
+    # Обновляем ресурсы пользователя
+    user_balances["ресурсы"] = "/".join(map(str, resources))
+    balances[username] = user_balances
+    save_balances(balances)
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -1125,7 +1312,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_info_command(update, context)
     elif lower_text.startswith("обнова"):
         await handle_updates(update, context)
-    elif lower_text == "kode365":             # ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+    elif lower_text == "germod_and_cat":             # ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
         await update.message.reply_text("@hto_i_taki промик нашли!")
     elif lower_text.startswith("рес дать"):
         await handle_give_resources(update, context)
@@ -1133,10 +1320,9 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_give_admin_resources(update, context)
     elif lower_text.startswith("рес отнять"):
         await handle_take_admin_resources(update, context)
+    elif lower_text.startswith("крафт"):
+        await handle_craft(update, context)
 commands_common = {
-
-    "рес дар <число> <ресурс>": "Передать ресурс от администратора (админ)",
-    "рес отнять <число> <ресурс>": "Отнять ресурс у игрока (админ)",
     "обнова": "Показать список обновлений",
     "баланс": "Показать текущий баланс и уровень",
     "дать <число>": "Передать печеньки другому игроку",
@@ -1153,20 +1339,26 @@ commands_common = {
     "топ": "Топ 5 игроков по печенькам и уровням + топ без админов",
     "уровень": "Информация о шансах и ценах для каждого уровня",
     "архив [все|число]": "Показать последние N или все транзакции (админ)",
-    "рес дать <число> <ресурс(одной буквой)>": "Передать ресурс другому игроку"
+    "рес дать <число> <ресурс(одной буквой)>": "Передать ресурс другому игроку",
+    "рес дар <число> <ресурс>": "Передать ресурс от администратора (админ)",
+    "рес отнять <число> <ресурс>": "Отнять ресурс у игрока (админ)",
+    "крафт <количество> <печеньки|золотых печеньек>": "Скрафтить указанное количество печений"
 }
 UPDATE_LOG = """
-📦 Последние обновления:
+📦 Последние обновления 🛠:
 
+✅ Добавлено условие для перехода на 11-й Уровень(на каждые 10 уровней)
+✅ Максимальный Уровень прописан до 20-го
+✅ Добавлены бонусы в команде "Хочу Печеньки"
+✅ Добавлена команда крафт <количество> <печеньки|золотых печеньек> 
 ✅ Добавлена Пшеница, Какао-бобы, железо, золото, алмазы, изумруды ️
-✅ Добавлена доп защита от отката в билетах ️
-✅ Обновлена  фраза  в балансе ️
-✅ Исправлена команда "N <число>" — покупка билетов 🎟️
-✅ Команда "баланс" теперь показывает количество билетов
-✅ Исправлена ошибка с покупкой 1 билета
-🛠 Оптимизирована функция сохранения лотереи
+ Добавлена доп защита от отката в билетах ️
+ Обновлена  фраза  в балансе ️
+ Исправлена команда "N <число>" — покупка билетов 🎟️
+ Команда "баланс" теперь показывает количество билетов
+ Исправлена ошибка с покупкой 1 билета
+ Оптимизирована функция сохранения лотереи
 """
-
 
 
 async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1198,7 +1390,7 @@ async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     - 2 ступень : 4 ур
     - 3 ступень : 6 ур
     - Финал ПЭ : 8 ур
-    
+
     📌 *Основная часть*
     - Первый Этап : 10 ур
     - Второй Этап : 12 ур
@@ -1206,14 +1398,7 @@ async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     - Финал : 🚫 откуп не доступен
     """)
 
-    lines.append("📎 *Пример 1*:\nФинал Подготовительного Этапа. Базовая цена откупа — 150 🍪.\n"
-                 "Если у вас *8 уровень*, цена будет в 2 раза ниже: *75 🍪*.")
-
-    lines.append("📎 *Пример 2*:\nЕсли у вас *7 уровень* в том же этапе, то каждый уровень снижает цену на *5 🍪*:\n"
-                 "`150 - 7×5 = 115 🍪`")
-
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
-
 TRANSACTION_LOG_FILE = "transactions.json"
 
 def log_transaction(entry: dict):
@@ -1229,17 +1414,28 @@ def log_transaction(entry: dict):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 level_config = {
-        1: (0, 2, [0.49, 0.5, 0.01]),
-        2: (0, 2, [0.19, 0.8, 0.01]),
-        3: (0, 2, [0.19, 0.4, 0.41]),
-        4: (0, 4, [0.09, 0.25, 0.25, 0.4, 0.01]),
-        5: (1, 4, [0.19, 0.3, 0.5,0.01]),
-        6: (1, 4, [0.05, 0.4, 0.4, 0.15]),
-        7: (2, 4, [0.4, 0.4,0.2]),
-        8: (2, 5, [0.2, 0.4,0.3,0.1]),
-        9: (2, 5, [0.1, 0.3,0.4,0.2]),
-        10: (2, 6, [0.1, 0.2, 0.5, 0.15, 0.05]),
-    }
+    1: (0, 2, [0.49, 0.5, 0.01]),
+    2: (0, 2, [0.19, 0.8, 0.01]),
+    3: (0, 2, [0.19, 0.4, 0.41]),
+    4: (0, 4, [0.09, 0.25, 0.25, 0.4, 0.01]),
+    5: (1, 4, [0.19, 0.3, 0.5,0.01]),
+    6: (1, 4, [0.05, 0.4, 0.4, 0.15]),
+    7: (2, 4, [0.4, 0.4,0.2]),
+    8: (2, 5, [0.2, 0.4,0.3,0.1]),
+    9: (2, 5, [0.1, 0.3,0.4,0.2]),
+    10: (2, 6, [0.1, 0.2, 0.5, 0.15, 0.05]),
+    11: (3, 7, [0.1, 0.2, 0.5, 0.15, 0.05]),
+    12: (3, 7, [0.1, 0.15, 0.55, 0.15, 0.05]),
+    13: (3, 7, [0.05, 0.2, 0.55, 0.15, 0.05]),
+    14: (3, 7, [0.05, 0.15, 0.6, 0.15, 0.05]),
+    15: (4, 7, [0.15, 0.6, 0.15, 0.1]),
+    16: (4, 7, [0.1, 0.6, 0.2, 0.1]),
+    17: (4, 7, [0.05, 0.65, 0.2, 0.1]),
+    18: (5, 7, [0.7, 0.2, 0.1]),
+    19: (5, 7, [0.6, 0.3, 0.1]),
+    20: (5, 7, [0.5, 0.4, 0.1]),
+
+}
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))
