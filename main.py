@@ -1297,7 +1297,7 @@ import re
 
 from datetime import datetime, timedelta, timezone
 
-moscow_tz = timezone(timedelta(hours=3))
+
 
 async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
