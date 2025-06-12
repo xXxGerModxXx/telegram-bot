@@ -305,20 +305,22 @@ from datetime import datetime
 
 from datetime import datetime
 
+from datetime import datetime, timedelta, timezone
+
+moscow_tz = timezone(timedelta(hours=3))
+
 async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
     balances = load_balances()
     user_balances = balances.get(username)
 
     if user_balances is None:
-        # Если юзер новый, инициализируем
         user_balances = {"уровень": 1}
         user_balances.update({curr: 0 for curr in CURRENCIES})
-        user_balances.update({"ресурсы": "0/0/0/0/0/0/0"})  # Добавляем ресурсы
-        user_balances.update({"последний фарм": ""})  # Инициализируем ключ "последний фарм"
+        user_balances.update({"ресурсы": "0/0/0/0/0/0/0"})
+        user_balances.update({"последний фарм": ""})
         balances[username] = user_balances
 
-    # Проверяем, когда последний фарм
     last_farm_str = user_balances.get("последний фарм", "")
     if not can_farm_today(last_farm_str):
         await update.message.reply_text("Вы уже получали печеньки сегодня. Попробуйте завтра!")
@@ -326,27 +328,22 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     level = user_balances.get("уровень", 1)
     cookies = get_cookies_by_level(level)
-
-    # Добавляем печеньки в баланс
     user_balances["печеньки"] = user_balances.get("печеньки", 0) + cookies
 
-    # Получаем ресурсы пользователя
     resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
     resources = list(map(int, resources_str.split('/')))
-
-    # Шансы на получение ресурсов
     messages = []
 
     if level >= 2:
         gold_chance = 25 - 5 * level
         if random.randint(1, 100) <= gold_chance:
-            resources[4] += 1  # Индекс золота
+            resources[4] += 1
             messages.append(f"Вы получили 1 золото! (Шанс: {gold_chance}%)")
 
     iron_chance = 20 + 5 * level
     iron_count = 1
     if iron_chance > 100:
-        resources[2] += 1  # Индекс железа
+        resources[2] += 1
         iron_count += 1
         iron_chance -= 100
         if random.randint(1, 100) <= iron_chance:
@@ -354,54 +351,55 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
             iron_count += 1
     messages.append(f"Вы получили {iron_count} железа! (Шанс: {iron_chance}%)")
 
-    if random.randint(1, 100) <= 1:  # 1% шанс получить 10 печений
+    if random.randint(1, 100) <= 1:
         user_balances["печеньки"] += 10
         messages.append("Вы получили 10 дополнительных печений! (Шанс: 1%)")
 
     wheat_chance = 50 - 5 * level
     if random.randint(1, 100) <= wheat_chance:
-        resources[1] += 1  # Индекс пшеницы
+        resources[1] += 1
         messages.append(f"Вы получили 1 пшеницу! (Шанс: {wheat_chance}%)")
 
     cocoa_chance = 5
     if random.randint(1, 100) <= cocoa_chance:
-        resources[0] += 1  # Индекс какао-бобов
+        resources[0] += 1
         messages.append(f"Вы получили 1 какао-боб! (Шанс: {cocoa_chance}%)")
 
     if 2 <= level <= 5:
         diamond_chance = 30 - 5 * level
         if random.randint(1, 100) <= diamond_chance:
-            resources[3] += 1  # Индекс алмазов
+            resources[3] += 1
             messages.append(f"Вы получили 1 алмаз! (Шанс: {diamond_chance}%)")
 
     if 1 <= level <= 10:
         emerald_chance = 3
         if random.randint(1, 100) <= emerald_chance:
-            resources[5] += 1  # Индекс изумрудов
+            resources[5] += 1
             messages.append(f"Вы получили 1 изумруд! (Шанс: {emerald_chance}%)")
 
-    # Обновляем ресурсы пользователя
     user_balances["ресурсы"] = "/".join(map(str, resources))
-
-    # Обновляем время последнего фарма только в случае успешного сбора
     user_balances["последний фарм"] = datetime.now().strftime("%H:%M %d-%m-%Y")
-
-    # Сохраняем обновления
     balances[username] = user_balances
     save_balances(balances)
 
-    # Логируем
-    log_transaction({
-        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-        "type": "хочу печеньки",
-        "to": username,
-        "currency": "печеньки",
-        "amount": cookies
-    })
+    try:
+        log_transaction({
+            "timestamp": datetime.now(moscow_tz).isoformat(),
+            "type": "хочу печеньки",
+            "from": "бот",
+            "to": username,
+            "currency": "печеньки",
+            "amount": cookies
+        })
+    except:
+        pass
 
-    # Отправляем сообщения о добыче ресурсов
     messages.insert(0, f"Вы получили {cookies} 🍪 печенек! Ваш уровень: {level}")
-    await update.message.reply_text("\n".join(messages))
+    try:
+        await update.message.reply_text("\n".join(messages))
+    except:
+        pass
+
 async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     text = msg.text.strip()
@@ -460,9 +458,12 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_balances(balances)
 
 
+
+    moscow_tz = timezone(timedelta(hours=3))
+
     try:
         log_transaction({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(moscow_tz).isoformat(),
             "type": "дать",
             "from": str(sender),
             "to": str(recipient),
@@ -477,7 +478,11 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await msg.reply_text("Передача прошла, но не получилось отправить сообщение о ней.")
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+from datetime import datetime, timedelta, timezone
+
+moscow_tz = timezone(timedelta(hours=3))
 
 async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -505,7 +510,9 @@ async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         currency = "печеньки"
 
     if not recipient_tag and msg.reply_to_message:
-        recipient_tag = msg.reply_to_message.from_user.username
+        reply_user = msg.reply_to_message.from_user
+        if reply_user and reply_user.username:
+            recipient_tag = reply_user.username
 
     if not recipient_tag:
         await msg.reply_text("Укажи красавчика или ответь на его сообщение.")
@@ -518,15 +525,31 @@ async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balances[recipient] = recipient_balances
 
     save_balances(balances)
-    log_transaction({
-        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-        "type": "дар",
-        "from": "Администрация",
-        "to": recipient,
-        "currency": currency,
-        "amount": amount
-    })
-    await msg.reply_text(f"{recipient} награждается {amount} {currency} {CURRENCIES[currency]} от администрации")
+
+    try:
+        log_transaction({
+            "timestamp": datetime.now(moscow_tz).isoformat(),
+            "type": "дар",
+            "from": "Администрация",
+            "to": recipient,
+            "currency": currency,
+            "amount": amount
+        })
+    except:
+        pass  # логирование не помешает выполнению
+
+    try:
+        await msg.reply_text(f"{recipient} награждается {amount} {currency} {CURRENCIES.get(currency, '')} от администрации")
+    except:
+        await msg.reply_text("Передача прошла, но сообщение не получилось отправить.")
+
+from datetime import datetime, timedelta, timezone
+
+moscow_tz = timezone(timedelta(hours=3))
+
+from datetime import datetime, timedelta, timezone
+
+moscow_tz = timezone(timedelta(hours=3))
 
 async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -534,7 +557,10 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = msg.text.strip()
-    match = re.match(r'^отнять\s+(\d+)(?:\s+(печеньки|трилистника|трилистники|четырёхлистника|четырёхлистники))?(?:\s+@(\w+))?', text, re.IGNORECASE)
+    match = re.match(
+        r'^отнять\s+(\d+)(?:\s+(печеньки|трилистника|трилистники|четырёхлистника|четырёхлистники))?(?:\s+@(\w+))?',
+        text, re.IGNORECASE
+    )
     if not match:
         return
 
@@ -554,7 +580,9 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         currency = "печеньки"
 
     if not recipient_tag and msg.reply_to_message:
-        recipient_tag = msg.reply_to_message.from_user.username
+        reply_user = msg.reply_to_message.from_user
+        if reply_user and reply_user.username:
+            recipient_tag = reply_user.username
 
     if not recipient_tag:
         await msg.reply_text("Укажи красавчика или ответь на его сообщение.")
@@ -568,15 +596,24 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balances[recipient] = recipient_balances
 
     save_balances(balances)
-    log_transaction({
-        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-        "type": "отнять",
-        "from": "Администрация",
-        "to": recipient,
-        "currency": currency,
-        "amount": amount
-    })
-    await msg.reply_text(f"{recipient} лишился {amount} {currency} {CURRENCIES[currency]}")
+
+    try:
+        log_transaction({
+            "timestamp": datetime.now(moscow_tz).isoformat(),
+            "type": "отнять",
+            "from": "Администрация",
+            "to": recipient,
+            "currency": currency,
+            "amount": amount
+        })
+    except:
+        pass  # если лог не сработал — просто игнорируем
+
+    try:
+        await msg.reply_text(f"{recipient} лишился {amount} {currency} {CURRENCIES.get(currency, '')}")
+    except:
+        await msg.reply_text("Печеньки отняты, но сообщение не отправилось.")
+
 
 
 async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -716,7 +753,7 @@ def get_cookies_by_level(level: int) -> int:
     return cookies
 
 excluded_users = {"@hto_i_taki", "@Shittttt", "@zZardexe", "@insanemaloy"}  # админы
-excluded_users_Admin = {"@hto_i_taki"}  # исключить полностью
+excluded_users_Admin = {"@hto_i_taki", "@Eparocheck"}  # исключить полностью
 
 async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balances = load_balances()
@@ -867,6 +904,10 @@ def safe_load_lottery():
 
 
 
+from datetime import datetime, timedelta, timezone
+
+moscow_tz = timezone(timedelta(hours=3))
+
 async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     username = get_username_from_message(msg)
@@ -885,7 +926,7 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     user_bal = balances.get(username, {}).get("печеньки", 0)
 
     if user_bal < count:
-        await msg.reply_text(f"В твоём мешочке с Печеньками не хватает :(")
+        await msg.reply_text("В твоём мешочке с Печеньками не хватает :(")
         return
 
     # Вычитаем печеньки
@@ -894,7 +935,7 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     save_balances(balances)
 
     # Загрузка текущих билетов
-    lottery =safe_load_lottery()
+    lottery = safe_load_lottery()
     ordered = list(lottery.items())
 
     # Найдём текущего пользователя и его количество билетов
@@ -905,14 +946,11 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
         prev_range = ordered[current_index][1]
         previous_tickets = prev_range[1] - prev_range[0] + 1
         ordered.pop(current_index)
-    else:
-        previous_tickets = 0
 
     total_tickets = previous_tickets + count
-    # Добавим пользователя в конец
-    ordered.append((username, [0, 0]))  # добавим позже, но без риска
+    ordered.append((username, [0, 0]))  # Добавим позже
 
-    # Пересчёт
+    # Пересчёт диапазонов
     current_number = 1
     for i, (user, rng) in enumerate(ordered):
         if user == username:
@@ -925,17 +963,24 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
 
     updated_lottery = {user: rng for user, rng in ordered}
     save_lottery(updated_lottery)
-    log_transaction({
-        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-        "type": "Лото-Печенько-Рея",
-        "from": username,
-        "to": "лотерея",
-        "currency": "печеньки",
-        "amount": count
-    })
 
-    user_range = updated_lottery[username]
-    await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец")
+    try:
+        log_transaction({
+            "timestamp": datetime.now(moscow_tz).isoformat(),
+            "type": "Лото-Печенько-Рея",
+            "from": username,
+            "to": "лотерея",
+            "currency": "печеньки",
+            "amount": count
+        })
+    except:
+        pass  # Ошибку лога игнорируем
+
+    try:
+        await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец")
+    except:
+        pass  # Даже если не ответили — это не критично
+
 
 async def handle_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(UPDATE_LOG.strip())
