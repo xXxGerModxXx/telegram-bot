@@ -913,6 +913,388 @@ from datetime import datetime, timedelta, timezone
 
 
 
+async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    username = get_username_from_message(msg)
+    text = msg.text.strip()
+
+    match = re.match(r'^N\s+(\d+)$', text, re.IGNORECASE)
+    if not match:
+        return
+
+    count = int(match.group(1))
+    if count <= 0:
+        await msg.reply_text("Количество билетов должно быть больше нуля.")
+        return
+
+    balances = load_balances()
+    user_bal = balances.get(username, {}).get("печеньки", 0)
+
+    if user_bal < count:
+        await msg.reply_text("В твоём мешочке с Печеньками не хватает :(")
+        return
+
+    # Вычитаем печеньки
+    balances.setdefault(username, {}).setdefault("печеньки", 0)
+    balances[username]["печеньки"] -= count
+    save_balances(balances)
+
+    # Загрузка текущих билетов
+    lottery = safe_load_lottery()
+    ordered = list(lottery.items())
+
+    # Найдём текущего пользователя и его количество билетов
+    current_index = next((i for i, (user, _) in enumerate(ordered) if user == username), None)
+    previous_tickets = 0
+
+    if current_index is not None:
+        prev_range = ordered[current_index][1]
+        previous_tickets = prev_range[1] - prev_range[0] + 1
+        ordered.pop(current_index)
+
+    total_tickets = previous_tickets + count
+    ordered.append((username, [0, 0]))  # Добавим позже
+
+    # Пересчёт диапазонов
+    current_number = 1
+    for i, (user, rng) in enumerate(ordered):
+        if user == username:
+            new_range = [current_number, current_number + total_tickets - 1]
+        else:
+            ticket_count = rng[1] - rng[0] + 1
+            new_range = [current_number, current_number + ticket_count - 1]
+        ordered[i] = (user, new_range)
+        current_number = new_range[1] + 1
+
+    updated_lottery = {user: rng for user, rng in ordered}
+    save_lottery(updated_lottery)
+
+    try:
+        log_transaction({
+            "timestamp": datetime.now(moscow_tz).isoformat(),
+            "type": "Лото-Печенько-Рея",
+            "from": username,
+            "to": "лотерея",
+            "currency": "печеньки",
+            "amount": count
+        })
+    except:
+        pass  # Ошибку лога игнорируем
+
+    try:
+        if random.randint(1,100)<50:
+            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец, держи промо: BedWars")
+        else:
+            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец")
+    except:
+        pass  # Даже если не ответили — это не критично
+
+
+async def handle_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(UPDATE_LOG.strip())
+
+
+import os
+import json
+
+async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = get_username_from_message(update.message)
+    if username != f"@{ADMIN_USERNAME}":
+        await update.message.reply_text("Эта команда доступна только админу.")
+        return
+
+    lottery =safe_load_lottery()
+    if not lottery:
+        await update.message.reply_text("Файл с билетами пуст.")
+        return
+
+    json_text = json.dumps(lottery, ensure_ascii=False, indent=2, separators=(',', ': '))
+
+
+    if len(json_text) > 4000:
+        temp_path = "lottery.json"
+        with open(temp_path, "w", encoding="utf-8") as f:
+            f.write(json_text)
+
+        with open(temp_path, "rb") as doc:
+            await update.message.reply_document(document=doc)
+
+        os.remove(temp_path)
+    else:
+        await update.message.reply_text(
+            f"Содержимое файла:\n```json\n{json_text}\n```",
+            parse_mode="Markdown"
+        )
+RESOURCES = {
+    "к": "Какао-бобы",
+    "п": "Пшеница",
+    "ж": "Железо",
+    "а": "Алмазы",
+    "з": "Золото",
+    "и": "Изумруды",
+    "р": "Золотая печенька"  # 🌟
+}
+RESOURCE_LIMITS = {
+    "к": lambda level: level,  # Какао-бобы: 1 * уровень
+    "п": lambda level: level,  # Пшеница: 1 * уровень
+    "ж": lambda level: 10 * level,  # Железо: 10 * уровень
+    "а": lambda level: 3 * level,  # Алмазы: 3 * уровень
+    "з": lambda level: 5 * level,  # Золото: 5 * уровень
+    "и": lambda level: level,  # Изумруды: 1 * уровень
+    "р": lambda level: level  # Золотая печенька: 1 * уровень
+}
+def get_user_resources(username, balances):
+    user_data = balances.get(username, {})
+    resources_str = user_data.get("ресурсы", "0/0/0/0/0/0/0")
+    return list(map(int, resources_str.split('/')))
+def update_user_resources(username, balances, resources):
+    resources_str = '/'.join(map(str, resources))
+    if username not in balances:
+        balances[username] = {}
+    balances[username]["ресурсы"] = resources_str
+    save_balances(balances)
+async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    text = msg.text.strip()
+
+    # Унифицированная обработка: приведём к нижнему регистру для сравнения
+    if not text.lower().startswith("рес дать"):
+        await msg.reply_text("Команда должна начинаться с 'рес дать'.")
+        return
+
+    # Удалим только самое первое вхождение 'рес дать' (в любом регистре)
+    command = re.sub(r'^рес\s+дать', '', text, flags=re.IGNORECASE).strip()
+
+    # Ожидается: <кол-во> <код_ресурса> [@username или ответ]
+    match = re.match(r'^(\d+)\s+(\w)', command)
+    if not match:
+        await msg.reply_text("Неверный формат. Используйте: рес дать <количество> <ресурс> [@имя или ответом]")
+        return
+
+    amount = int(match.group(1))
+    resource_short = match.group(2).lower()
+
+    if resource_short not in RESOURCES:
+        await msg.reply_text("Такого ресурса не существует.")
+        return
+
+    resource_name = RESOURCES[resource_short]
+    sender = get_username_from_message(msg)
+    recipient_tag = None
+
+    # Пытаемся найти @username
+    recipient_match = re.search(r'@(\w+)', command)
+    if recipient_match:
+        recipient_tag = recipient_match.group(1)
+    elif msg.reply_to_message and msg.reply_to_message.from_user.username:
+        recipient_tag = msg.reply_to_message.from_user.username
+
+    if not recipient_tag:
+        await msg.reply_text("Укажи @username получателя или ответь на его сообщение.")
+        return
+
+    recipient = f"@{recipient_tag}"
+
+    if sender == recipient:
+        await msg.reply_text("Нельзя переводить ресурсы самому себе.")
+        return
+
+    balances = load_balances()
+
+    if sender not in balances or recipient not in balances:
+        await msg.reply_text("Один из участников не зарегистрирован.")
+        return
+
+    sender_resources = get_user_resources(sender, balances)
+    recipient_resources = get_user_resources(recipient, balances)
+
+    resource_index = list(RESOURCES.keys()).index(resource_short)
+    sender_level = balances[sender].get("уровень", 1)
+    recipient_level = balances[recipient].get("уровень", 1)
+
+    sender_limit = RESOURCE_LIMITS[resource_short](sender_level)
+    recipient_limit = RESOURCE_LIMITS[resource_short](recipient_level)
+
+    if sender_resources[resource_index] < amount:
+        await msg.reply_text(f"У тебя не хватает {resource_name}.")
+        return
+
+    if recipient_resources[resource_index] + amount > recipient_limit:
+        await msg.reply_text(f"У {recipient} нет места для {amount} {resource_name}.")
+        return
+
+    # Передаём ресурсы
+    sender_resources[resource_index] -= amount
+    recipient_resources[resource_index] += amount
+
+    update_user_resources(sender, balances, sender_resources)
+    update_user_resources(recipient, balances, recipient_resources)
+
+    save_balances(balances)
+
+    try:
+        log_transaction({
+            "timestamp": datetime.now(timezone(timedelta(hours=3))).isoformat(),
+            "type": "ресурс перевод",
+            "from": sender,
+            "to": recipient,
+            "resource": resource_name,
+            "amount": amount
+        })
+    except:
+        pass  # лог не должен ломать выполнение
+
+    await msg.reply_text(f"{sender} перевёл {amount} {resource_name} {recipient}.")
+
+from datetime import datetime, timedelta, timezone
+
+
+
+async def handle_give_admin_resources(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or msg.from_user.username != ADMIN_USERNAME:
+        return
+
+    text = msg.text.strip()
+
+    # Удаляем префикс "рес дар" (в любом регистре и с пробелами)
+    command = re.sub(r'^рес\s+дар', '', text, flags=re.IGNORECASE).strip()
+
+    match = re.match(r'^(\d+)\s+(\w)', command)
+    if not match:
+        await msg.reply_text("Неверный формат. Используйте: рес дар <количество> <ресурс> [@имя или ответом]")
+        return
+
+    amount = int(match.group(1))
+    resource_short = match.group(2).lower()
+
+    if resource_short not in RESOURCES:
+        await msg.reply_text("Неизвестный ресурс.")
+        return
+
+    resource_name = RESOURCES[resource_short]
+    recipient_tag = None
+
+    # Пытаемся найти @username
+    recipient_match = re.search(r'@(\w+)', command)
+    if recipient_match:
+        recipient_tag = recipient_match.group(1)
+    elif msg.reply_to_message and msg.reply_to_message.from_user.username:
+        recipient_tag = msg.reply_to_message.from_user.username
+
+    if not recipient_tag:
+        await msg.reply_text("Укажи получателя через @username или ответом на сообщение.")
+        return
+
+    recipient = f"@{recipient_tag}"
+    balances = load_balances()
+
+    if recipient not in balances:
+        await msg.reply_text("Получатель не зарегистрирован.")
+        return
+
+    recipient_resources = get_user_resources(recipient, balances)
+    recipient_level = balances[recipient].get("уровень", 1)
+
+    resource_index = list(RESOURCES.keys()).index(resource_short)
+    recipient_limit = RESOURCE_LIMITS[resource_short](recipient_level)
+
+    if recipient_resources[resource_index] + amount > recipient_limit:
+        await msg.reply_text(f"У {recipient} нет места для {amount} {resource_name}.")
+        return
+
+    recipient_resources[resource_index] += amount
+    update_user_resources(recipient, balances, recipient_resources)
+    save_balances(balances)
+
+    try:
+        log_transaction({
+            "timestamp": datetime.now(moscow_tz).isoformat(),
+            "type": "ресурс дар",
+            "from": "Администрация",
+            "to": recipient,
+            "resource": resource_name,
+            "amount": amount
+        })
+    except:
+        pass
+
+    await msg.reply_text(f"{recipient} получил {amount} {resource_name} от администрации.")
+
+
+
+
+
+async def handle_take_admin_resources(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or msg.from_user.username != ADMIN_USERNAME:
+        return
+
+    text = msg.text.strip()
+
+    # Удаляем префикс "рес отнять" (с учетом регистра и пробелов)
+    command = re.sub(r'^рес\s+отнять', '', text, flags=re.IGNORECASE).strip()
+
+    match = re.match(r'^(\d+)\s+(\w)', command)
+    if not match:
+        await msg.reply_text("Неверный формат. Используйте: рес отнять <количество> <ресурс> [@имя или ответом]")
+        return
+
+    amount = int(match.group(1))
+    resource_short = match.group(2).lower()
+
+    if resource_short not in RESOURCES:
+        await msg.reply_text("Неизвестный ресурс.")
+        return
+
+    resource_name = RESOURCES[resource_short]
+    recipient_tag = None
+
+    # Получатель: @username или ответ на сообщение
+    recipient_match = re.search(r'@(\w+)', command)
+    if recipient_match:
+        recipient_tag = recipient_match.group(1)
+    elif msg.reply_to_message and msg.reply_to_message.from_user.username:
+        recipient_tag = msg.reply_to_message.from_user.username
+
+    if not recipient_tag:
+        await msg.reply_text("Укажи получателя через @username или ответом на сообщение.")
+        return
+
+    recipient = f"@{recipient_tag}"
+    balances = load_balances()
+
+    if recipient not in balances:
+        await msg.reply_text("Получатель не зарегистрирован.")
+        return
+
+    recipient_resources = get_user_resources(recipient, balances)
+    resource_index = list(RESOURCES.keys()).index(resource_short)
+
+    if recipient_resources[resource_index] < amount:
+        await msg.reply_text(f"У {recipient} нет {amount} {resource_name} для изъятия.")
+        return
+
+    recipient_resources[resource_index] -= amount
+    update_user_resources(recipient, balances, recipient_resources)
+    save_balances(balances)
+
+    try:
+        log_transaction({
+            "timestamp": datetime.now(moscow_tz).isoformat(),
+            "type": "ресурс изъятие",
+            "from": recipient,
+            "to": "Администрация",
+            "resource": resource_name,
+            "amount": amount
+        })
+    except:
+        pass
+
+    await msg.reply_text(f"{recipient} лишился {amount} {resource_name}.")
+
+import re
+
 from datetime import datetime, timedelta, timezone
 
 moscow_tz = timezone(timedelta(hours=3))
@@ -1075,7 +1457,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_clear_lottery(update, context)
     elif lower_text.startswith("среднее"):
         await handle_average_cookies(update, context)
-    elif lower_text == "хочу печеньки":
+    elif lower_text == "хочу печеньки" or lower_text == "хочу печенек" or lower_text == "дайте печенек"or lower_text == "дай печенек"or lower_text == "хороший котик":
         await handle_want_cookies(update, context)
         if random.random() < 0.2:
             await maybe_save_admin(update, context)
