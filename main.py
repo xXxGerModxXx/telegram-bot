@@ -281,7 +281,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = resources[index]
         limit = RESOURCE_LIMITS[resource_short](level)  # Получаем лимит для ресурса
         lines.append(f"  {amount}/{limit} {resource_name} ({resource_short})")
-    if random.randint(1,100)<10:
+    if random.randint(1,100)<0:
         await update.message.reply_text("промокод: fox  (напиши fox в чат) ".join(lines))
     else:
         await update.message.reply_text("\n".join(lines))
@@ -343,20 +343,18 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
     iron_chance = 20 + 5 * level
     iron_count = 0
 
-    if iron_chance > 100:
+    while iron_chance >= 100:
         resources[2] += 1
         iron_count += 1
         iron_chance -= 100
-        if random.randint(1, 100) <= iron_chance:
-            resources[2] += 1
-            iron_count += 1
-    else:
-        if random.randint(1, 100) <= iron_chance:
-            resources[2] += 1
-            iron_count += 1
+
+    # остаток — шанс на дополнительное железо
+    if iron_chance > 0 and random.randint(1, 100) <= iron_chance:
+        resources[2] += 1
+        iron_count += 1
 
     if iron_count > 0:
-        messages.append(f"Вы получили {iron_count} железа! (Шанс: {iron_chance + (100 if iron_count >= 1 else 0)}%)")
+        messages.append(f"Вы получили {iron_count} железа! (Общий шанс: {20 + 5 * level}%)")
 
     if random.randint(1, 100) <= 1:
         user_balances["печеньки"] += 10
@@ -984,7 +982,10 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
         pass  # Ошибку лога игнорируем
 
     try:
-        await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец")
+        if random.randint(1,100)<50:
+            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец, держи промо: BedWars")
+        else:
+            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец")
     except:
         pass  # Даже если не ответили — это не критично
 
@@ -1407,6 +1408,7 @@ commands_common = {
 UPDATE_LOG = """
 📦 Последние обновления 🛠:
 
+✅ Исправлена выдача железа
 ✅ Обновлены все фразы бота
 ✅ Добавлено условие для перехода на 11-й Уровень(на каждые 10 уровней)
 ✅ Максимальный Уровень прописан до 20-го
@@ -1423,43 +1425,42 @@ UPDATE_LOG = """
 
 
 async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Загружаем цены
     try:
         with open("levels_price.json", "r", encoding="utf-8") as f:
             prices = json.load(f)
     except FileNotFoundError:
         prices = {}
 
-    lines = ["📊 *Информация об уровнях*",
-             "Уровень увеличивает фарм печенек и открывает новые возможности.\n"]
+    lines = ["📊 *Уровни*",
+             "Уровень увеличивает фарм печенек и открывает новые возможности. "
+             "_Для прокачки высоких уровней потребуются ресурсы._\n"]
 
     for level in range(1, 11):
         min_amt, max_amt, chances = level_config[level]
         chance_str = "/".join(f"{round(p * 100)}" for p in chances)
         price = prices.get(str(level), "🚫" if level == 1 else "неизвестно")
 
-        lines.append(
-            f"*{level} уровень*: {min_amt}–{max_amt} 🍪 в день — шанс: {chance_str} — цена: {price}"
-        )
+        lines.append(f"*{level} ур*: {min_amt}–{max_amt} 🍪 в день | шанс: {chance_str}% | цена: {price}")
 
     lines.append("\n📉 *Откуп от поражения*")
-    lines.append("Уровень понижает цену откупа в 2 раза, если достигнут нужный уровень.\n")
-    lines.append("*Формат:* `(Ступень — Этап) : Нужный уровень`")
+    lines.append("Доступен при достижении нужного уровня. Цена — в 2 раза ниже.\n")
+    lines.append("*Формат:* `(Ступень — Этап) : Уровень`")
     lines.append("""
-    📌 *Подготовительный Этап*
-    - 1 ступень : 2 ур
-    - 2 ступень : 4 ур
-    - 3 ступень : 6 ур
-    - Финал ПЭ : 8 ур
+📌 *Подготовка*
+- 1 ст. : 2 ур
+- 2 ст. : 4 ур
+- 3 ст. : 6 ур
+- Финал ПЭ : 8 ур
 
-    📌 *Основная часть*
-    - Первый Этап : 10 ур
-    - Второй Этап : 12 ур
-    - Третий Этап : 14 ур
-    - Финал : 🚫 откуп не доступен
-    """)
+📌 *Основной этап*
+- 1 этап : 10 ур
+- 2 этап : 12 ур
+- 3 этап : 14 ур
+- Финал : 🚫 откуп недоступен
+""")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
 TRANSACTION_LOG_FILE = "transactions.json"
 
 def log_transaction(entry: dict):
