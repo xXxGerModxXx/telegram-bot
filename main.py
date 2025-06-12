@@ -222,9 +222,13 @@ from telegram import User, Chat, Message, Update
 file_lock1 = threading.Lock()
 
 def save_balances(data):
-    with file_lock1:
+    file_lock1.acquire()
+    try:
         with open(BALANCE_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+    finally:
+        file_lock1.release()
+
 
 
 def get_username_from_message(msg: Message) -> str:
@@ -454,21 +458,26 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balances[recipient] = recipient_balances
 
     save_balances(balances)
-    log_transaction({
-        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-        "type": "дать",
-        "from": sender,
-        "to": recipient,
-        "currency": currency,
-        "amount": amount
-    })
+
+
+    try:
+        log_transaction({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": "дать",
+            "from": str(sender),
+            "to": str(recipient),
+            "currency": currency,
+            "amount": amount
+        })
+    except Exception:
+        pass  # Ошибка при логировании — продолжаем без лога
 
     try:
         await msg.reply_text(f"{sender} дружески отдал {amount} {currency} {CURRENCIES.get(currency, '')} {recipient}.")
     except:
         await msg.reply_text("Передача прошла, но не получилось отправить сообщение о ней.")
 
-
+from datetime import datetime, timezone
 
 async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
