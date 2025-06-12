@@ -95,12 +95,12 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_balances = balances.get(username)
 
     if user_balances is None:
-        await update.message.reply_text("Сначала заработайте печеньки, чтобы повысить уровень.")
+        await update.message.reply_text("В твоём мешочке с Печеньками кажется не достаточно :(.")
         return
 
     current_level = user_balances.get("уровень", 1)
     if current_level >= 20:
-        await update.message.reply_text("Вы уже достигли максимального уровня!")
+        await update.message.reply_text("Ты и так слишком крут!")
         return
 
     levels_price = load_levels_price()
@@ -123,14 +123,14 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if current_level >= 10:
         if resources[gold_cookies_index] < required_gold_cookies:
-            await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {required_gold_cookies} золотых печений.")
+            await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {required_gold_cookies} золотых Печенек, так что иди и найди их мне")
             return
         if resources[diamonds_index] < required_diamonds:
-            await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {required_diamonds} алмазов.")
+            await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {required_diamonds} алмазов, так что иди и найди их мне")
             return
 
     if current_cookies < price:
-        await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {price} печенек.")
+        await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {price} печенек, так что иди и найди их мне")
         return
 
     # Отнимаем ресурсы и повышаем уровень
@@ -155,7 +155,7 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "diamonds_spent": required_diamonds if current_level >= 10 else 0
     })
 
-    await update.message.reply_text(f"Поздравляю! Вы повысили уровень до {next_level} и потратили {price} печенек.")
+    await update.message.reply_text(f"Поздравляю! Ты повысил уровень до {next_level} и потратил {price} печенек. Давай ещё повысим !")
 async def handle_update_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.username != ADMIN_USERNAME:
         await update.message.reply_text("Команда доступна только администратору.")
@@ -252,7 +252,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     level = user_balances.get("уровень", 1)
 
-    lines = [f"Милашка {username}, вот твой балансик:",
+    lines = [f"Милашка {username}, вот твой баланс:",
              f"Уровень: {level}"]
 
     for curr, emoji in CURRENCIES.items():
@@ -278,7 +278,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         limit = RESOURCE_LIMITS[resource_short](level)  # Получаем лимит для ресурса
         lines.append(f"  {amount}/{limit} {resource_name} ({resource_short})")
     if random.randint(1,100)<20:
-        await update.message.reply_text("\n промокод: GerMod_and_Cat".join(lines))
+        await update.message.reply_text("промокод: GerMod_and_Cat".join(lines))
     else:
         await update.message.reply_text("\n".join(lines))
 
@@ -297,6 +297,8 @@ from datetime import datetime
 
 import random
 
+from datetime import datetime
+
 async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
     balances = load_balances()
@@ -307,6 +309,7 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_balances = {"уровень": 1}
         user_balances.update({curr: 0 for curr in CURRENCIES})
         user_balances.update({"ресурсы": "0/0/0/0/0/0/0"})  # Добавляем ресурсы
+        user_balances.update({"последний фарм": ""})  # Инициализируем ключ "последний фарм"
         balances[username] = user_balances
 
     # Проверяем, когда последний фарм
@@ -393,7 +396,6 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Отправляем сообщения о добыче ресурсов
     messages.insert(0, f"Вы получили {cookies} 🍪 печенек! Ваш уровень: {level}")
     await update.message.reply_text("\n".join(messages))
-
 async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     text = msg.text.strip()
@@ -429,21 +431,21 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recipient_tag = msg.reply_to_message.from_user.username
 
     if not recipient_tag:
-        await msg.reply_text("Укажи получателя или ответь на его сообщение.")
+        await msg.reply_text("Укажи тег красавчика или ответь на его сообщение.")
         return
 
     sender = get_username_from_message(msg)
     recipient = f"@{recipient_tag}"
 
     if sender == recipient:
-        await msg.reply_text("Нельзя переводить себе валюту!")
+        await msg.reply_text("Нельзя переводить себе !")
         return
 
     balances = load_balances()
     sender_balances = balances.get(sender, {curr: 0 for curr in CURRENCIES})
 
     if sender_balances.get(currency, 0) < amount:
-        await msg.reply_text(f"У тебя недостаточно {currency}.")
+        await msg.reply_text(f"Кажется в мешочке не хватает {currency}.")
         return
 
     # Списываем и начисляем
@@ -464,10 +466,7 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "amount": amount
     })
 
-    await msg.reply_text(
-    f"{sender} перевёл {amount} {currency} {CURRENCIES[currency]} {recipient}.\n"
-
-    )
+    await msg.reply_text(f"{sender} дружески отдал {amount} {currency} {CURRENCIES[currency]} {recipient}.\n")
 
 
 
@@ -500,7 +499,7 @@ async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recipient_tag = msg.reply_to_message.from_user.username
 
     if not recipient_tag:
-        await msg.reply_text("Укажи получателя или ответь на его сообщение.")
+        await msg.reply_text("Укажи красавчика или ответь на его сообщение.")
         return
 
     recipient = f"@{recipient_tag}"
@@ -518,7 +517,7 @@ async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "currency": currency,
         "amount": amount
     })
-    await msg.reply_text(f"{recipient} получил {amount} {currency} {CURRENCIES[currency]} от администрации")
+    await msg.reply_text(f"{recipient} награждается {amount} {currency} {CURRENCIES[currency]} от администрации")
 
 async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -549,7 +548,7 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recipient_tag = msg.reply_to_message.from_user.username
 
     if not recipient_tag:
-        await msg.reply_text("Укажи получателя или ответь на его сообщение.")
+        await msg.reply_text("Укажи красавчика или ответь на его сообщение.")
         return
 
     recipient = f"@{recipient_tag}"
@@ -673,7 +672,7 @@ async def handle_average_cookies(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     average = total / count
-    await update.message.reply_text(f"Среднее количество печенек (без админов): {average:.2f} 🍪")
+    await update.message.reply_text(f"Среднее количество печенек у милах (без крутых админов): {average:.2f} 🍪")
 async def handle_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
     is_admin = (username == f"@{ADMIN_USERNAME}")
@@ -686,7 +685,7 @@ async def handle_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         filtered_commands = commands_common
 
-    lines = ["Доступные команды:"]
+    lines = ["Тебе красавчик доступное следующее:"]
     for cmd, desc in filtered_commands.items():
         lines.append(f"{cmd} — {desc}")
 
@@ -877,7 +876,7 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     user_bal = balances.get(username, {}).get("печеньки", 0)
 
     if user_bal < count:
-        await msg.reply_text(f"Недостаточно печенек.")
+        await msg.reply_text(f"В твоём мешочке с Печеньками не хватает :(")
         return
 
     # Вычитаем печеньки
@@ -927,7 +926,7 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     })
 
     user_range = updated_lottery[username]
-    await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪")
+    await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец")
 
 async def handle_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(UPDATE_LOG.strip())
@@ -1007,7 +1006,7 @@ async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TY
     resource_short = match.group(2).lower()
 
     if resource_short not in RESOURCES:
-        await msg.reply_text("Неизвестный ресурс.")
+        await msg.reply_text("окак такого ресурса нет")
         return
 
     resource_name = RESOURCES[resource_short]
@@ -1021,7 +1020,7 @@ async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TY
         recipient_tag = msg.reply_to_message.from_user.username
 
     if not recipient_tag:
-        await msg.reply_text("Укажи получателя или ответь на его сообщение.")
+        await msg.reply_text("Укажи красачика или ответь на его сообщение.")
         return
 
     recipient = f"@{recipient_tag}"
@@ -1042,11 +1041,11 @@ async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TY
     recipient_limit = RESOURCE_LIMITS[resource_short](recipient_level)
 
     if sender_resources[resource_index] < amount:
-        await msg.reply_text(f"У тебя недостаточно {resource_name}.")
+        await msg.reply_text(f"У тебя милаха недостаточно {resource_name}.")
         return
 
     if recipient_resources[resource_index] + amount > recipient_limit:
-        await msg.reply_text(f"У {recipient} нет места для {amount} {resource_name}.")
+        await msg.reply_text(f"У красавчика {recipient} нет места для {amount} {resource_name}.")
         return
 
     # Списываем у отправителя
@@ -1168,7 +1167,7 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_balances = balances.get(username)
 
     if user_balances is None:
-        await msg.reply_text("Вы не зарегистрированы. Начните с команды /start.")
+        await msg.reply_text("Вы не зарегистрированы. Начните с команды Баланс")
         return
 
     resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
@@ -1185,7 +1184,7 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
         required_wheat = 2 * amount
         required_cocoa = 1 * amount
         if resources[wheat_index] < required_wheat or resources[cocoa_index] < required_cocoa:
-            await msg.reply_text(f"У вас недостаточно ресурсов для крафта {amount} обычных печений.")
+            await msg.reply_text(f"У вас недостаточно ресурсов для крафта {amount} Печенек.")
             return
 
         resources[wheat_index] -= required_wheat
@@ -1200,16 +1199,16 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "amount": amount
         })
 
-        await msg.reply_text(f"Вы скрафтили {amount} обычных печений.")
+        await msg.reply_text(f"Вы скрафтили {amount} обычных Печенек.")
 
     # Крафт золотых печений
-    elif craft_type == "золотых печеньек":
+    elif craft_type == "золотых печеньек" or craft_type == "золотых печенек":
         required_wheat = 2 * amount
         required_cocoa = 1 * amount
         required_cookies = 1 * amount
         if resources[wheat_index] < required_wheat or resources[cocoa_index] < required_cocoa or resources[cookie_index] < required_cookies:
             if resources[wheat_index] < required_wheat or resources[cocoa_index] < required_cocoa:
-                await msg.reply_text(f"У вас недостаточно ресурсов для крафта {amount} золотых печений.")
+                await msg.reply_text(f"У вас недостаточно ресурсов для крафта {amount} золотых Печенек.")
                 return
             else:
                 resources[wheat_index] -= required_wheat
@@ -1224,7 +1223,7 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "amount": amount
                 })
 
-                await msg.reply_text(f"У вас недостаточно золота для крафта {amount} золотых печений. Скрафтили {amount} обычных печений.")
+                await msg.reply_text(f"У вас недостаточно золота для крафта {amount} золотых печений. Скрафтили {amount} обычных Печенек.")
                 return
 
         resources[wheat_index] -= required_wheat
@@ -1240,10 +1239,10 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "amount": amount
         })
 
-        await msg.reply_text(f"Вы скрафтили {amount} золотых печений.")
+        await msg.reply_text(f"Вы скрафтили {amount} золотых Печенек.")
 
     else:
-        await msg.reply_text("Неизвестный тип крафта. Доступные типы: 'печеньки', 'золотых печений'.")
+        await msg.reply_text("Неизвестный тип крафта. Доступные типы: 'печеньки', 'золотых печенек'.")
 
     # Обновляем ресурсы пользователя
     user_balances["ресурсы"] = "/".join(map(str, resources))
@@ -1347,6 +1346,7 @@ commands_common = {
 UPDATE_LOG = """
 📦 Последние обновления 🛠:
 
+✅ Обновлены все фразы бота
 ✅ Добавлено условие для перехода на 11-й Уровень(на каждые 10 уровней)
 ✅ Максимальный Уровень прописан до 20-го
 ✅ Добавлены бонусы в команде "Хочу Печеньки"
