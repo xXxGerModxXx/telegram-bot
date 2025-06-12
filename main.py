@@ -277,8 +277,8 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = resources[index]
         limit = RESOURCE_LIMITS[resource_short](level)  # Получаем лимит для ресурса
         lines.append(f"  {amount}/{limit} {resource_name} ({resource_short})")
-    if random.randint(1,100)<20:
-        await update.message.reply_text("промокод: GerMod_and_Cat".join(lines))
+    if random.randint(1,100)<10:
+        await update.message.reply_text("промокод: fox  (напиши fox в чат) ".join(lines))
     else:
         await update.message.reply_text("\n".join(lines))
 
@@ -296,6 +296,8 @@ def can_farm_today(last_farm_str: str) -> bool:
 from datetime import datetime
 
 import random
+
+from datetime import datetime
 
 from datetime import datetime
 
@@ -323,9 +325,6 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # Добавляем печеньки в баланс
     user_balances["печеньки"] = user_balances.get("печеньки", 0) + cookies
-
-    # Обновляем время последнего фарма
-    user_balances["последний фарм"] = datetime.now().strftime("%H:%M %d-%m-%Y")
 
     # Получаем ресурсы пользователя
     resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
@@ -380,6 +379,9 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Обновляем ресурсы пользователя
     user_balances["ресурсы"] = "/".join(map(str, resources))
 
+    # Обновляем время последнего фарма только в случае успешного сбора
+    user_balances["последний фарм"] = datetime.now().strftime("%H:%M %d-%m-%Y")
+
     # Сохраняем обновления
     balances[username] = user_balances
     save_balances(balances)
@@ -403,6 +405,7 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Регулярка теперь ищет: "дать N [название валюты]"
     match = re.match(r'^дать\s+(\d+)(?:\s+(печеньки|трилистника|трилистники|четырёхлистника|четырёхлистники))?', text, re.IGNORECASE)
     if not match:
+        await msg.reply_text("Неверный формат. Используйте: дать <количество> [название валюты]")
         return
 
     amount = int(match.group(1))
@@ -467,7 +470,6 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     })
 
     await msg.reply_text(f"{sender} дружески отдал {amount} {currency} {CURRENCIES[currency]} {recipient}.\n")
-
 
 
 async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1311,7 +1313,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_info_command(update, context)
     elif lower_text.startswith("обнова"):
         await handle_updates(update, context)
-    elif lower_text == "germod_and_cat":             # ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+    elif lower_text == "fox":             # ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
         await update.message.reply_text("@hto_i_taki промик нашли!")
     elif lower_text.startswith("рес дать"):
         await handle_give_resources(update, context)
