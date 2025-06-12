@@ -341,7 +341,8 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
             messages.append(f"Вы получили 1 золото! (Шанс: {gold_chance}%)")
 
     iron_chance = 20 + 5 * level
-    iron_count = 1
+    iron_count = 0
+
     if iron_chance > 100:
         resources[2] += 1
         iron_count += 1
@@ -349,7 +350,13 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
         if random.randint(1, 100) <= iron_chance:
             resources[2] += 1
             iron_count += 1
-    messages.append(f"Вы получили {iron_count} железа! (Шанс: {iron_chance}%)")
+    else:
+        if random.randint(1, 100) <= iron_chance:
+            resources[2] += 1
+            iron_count += 1
+
+    if iron_count > 0:
+        messages.append(f"Вы получили {iron_count} железа! (Шанс: {iron_chance + (100 if iron_count >= 1 else 0)}%)")
 
     if random.randint(1, 100) <= 1:
         user_balances["печеньки"] += 10
