@@ -911,405 +911,129 @@ def safe_load_lottery():
 
 from datetime import datetime, timedelta, timezone
 
+
+
+from datetime import datetime, timedelta, timezone
+
 moscow_tz = timezone(timedelta(hours=3))
-
-async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    username = get_username_from_message(msg)
-    text = msg.text.strip()
-
-    match = re.match(r'^N\s+(\d+)$', text, re.IGNORECASE)
-    if not match:
-        return
-
-    count = int(match.group(1))
-    if count <= 0:
-        await msg.reply_text("Количество билетов должно быть больше нуля.")
-        return
-
-    balances = load_balances()
-    user_bal = balances.get(username, {}).get("печеньки", 0)
-
-    if user_bal < count:
-        await msg.reply_text("В твоём мешочке с Печеньками не хватает :(")
-        return
-
-    # Вычитаем печеньки
-    balances.setdefault(username, {}).setdefault("печеньки", 0)
-    balances[username]["печеньки"] -= count
-    save_balances(balances)
-
-    # Загрузка текущих билетов
-    lottery = safe_load_lottery()
-    ordered = list(lottery.items())
-
-    # Найдём текущего пользователя и его количество билетов
-    current_index = next((i for i, (user, _) in enumerate(ordered) if user == username), None)
-    previous_tickets = 0
-
-    if current_index is not None:
-        prev_range = ordered[current_index][1]
-        previous_tickets = prev_range[1] - prev_range[0] + 1
-        ordered.pop(current_index)
-
-    total_tickets = previous_tickets + count
-    ordered.append((username, [0, 0]))  # Добавим позже
-
-    # Пересчёт диапазонов
-    current_number = 1
-    for i, (user, rng) in enumerate(ordered):
-        if user == username:
-            new_range = [current_number, current_number + total_tickets - 1]
-        else:
-            ticket_count = rng[1] - rng[0] + 1
-            new_range = [current_number, current_number + ticket_count - 1]
-        ordered[i] = (user, new_range)
-        current_number = new_range[1] + 1
-
-    updated_lottery = {user: rng for user, rng in ordered}
-    save_lottery(updated_lottery)
-
-    try:
-        log_transaction({
-            "timestamp": datetime.now(moscow_tz).isoformat(),
-            "type": "Лото-Печенько-Рея",
-            "from": username,
-            "to": "лотерея",
-            "currency": "печеньки",
-            "amount": count
-        })
-    except:
-        pass  # Ошибку лога игнорируем
-
-    try:
-        if random.randint(1,100)<50:
-            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец, держи промо: BedWars")
-        else:
-            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец")
-    except:
-        pass  # Даже если не ответили — это не критично
-
-
-async def handle_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(UPDATE_LOG.strip())
-
-
-import os
-import json
-
-async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    username = get_username_from_message(update.message)
-    if username != f"@{ADMIN_USERNAME}":
-        await update.message.reply_text("Эта команда доступна только админу.")
-        return
-
-    lottery =safe_load_lottery()
-    if not lottery:
-        await update.message.reply_text("Файл с билетами пуст.")
-        return
-
-    json_text = json.dumps(lottery, ensure_ascii=False, indent=2, separators=(',', ': '))
-
-
-    if len(json_text) > 4000:
-        temp_path = "lottery.json"
-        with open(temp_path, "w", encoding="utf-8") as f:
-            f.write(json_text)
-
-        with open(temp_path, "rb") as doc:
-            await update.message.reply_document(document=doc)
-
-        os.remove(temp_path)
-    else:
-        await update.message.reply_text(
-            f"Содержимое файла:\n```json\n{json_text}\n```",
-            parse_mode="Markdown"
-        )
-RESOURCES = {
-    "к": "Какао-бобы",
-    "п": "Пшеница",
-    "ж": "Железо",
-    "а": "Алмазы",
-    "з": "Золото",
-    "и": "Изумруды",
-    "р": "Золотая печенька"  # 🌟
-}
-RESOURCE_LIMITS = {
-    "к": lambda level: level,  # Какао-бобы: 1 * уровень
-    "п": lambda level: level,  # Пшеница: 1 * уровень
-    "ж": lambda level: 10 * level,  # Железо: 10 * уровень
-    "а": lambda level: 3 * level,  # Алмазы: 3 * уровень
-    "з": lambda level: 5 * level,  # Золото: 5 * уровень
-    "и": lambda level: level,  # Изумруды: 1 * уровень
-    "р": lambda level: level  # Золотая печенька: 1 * уровень
-}
-def get_user_resources(username, balances):
-    user_data = balances.get(username, {})
-    resources_str = user_data.get("ресурсы", "0/0/0/0/0/0/0")
-    return list(map(int, resources_str.split('/')))
-def update_user_resources(username, balances, resources):
-    resources_str = '/'.join(map(str, resources))
-    if username not in balances:
-        balances[username] = {}
-    balances[username]["ресурсы"] = resources_str
-    save_balances(balances)
-async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    text = msg.text.strip()
-
-    # Удаляем префикс "рес дать" и обрабатываем оставшуюся часть
-    command = text.replace("рес дать", "").strip()
-    match = re.match(r'^(\d+)\s+(\w)', command, re.IGNORECASE)
-    if not match:
-        await msg.reply_text("Неверный формат. Используйте: рес дать <количество> <ресурс>")
-        return
-
-    amount = int(match.group(1))
-    resource_short = match.group(2).lower()
-
-    if resource_short not in RESOURCES:
-        await msg.reply_text("окак такого ресурса нет")
-        return
-
-    resource_name = RESOURCES[resource_short]
-    sender = get_username_from_message(msg)
-    recipient_tag = None
-
-    recipient_match = re.search(r'@(\w+)', command)
-    if recipient_match:
-        recipient_tag = recipient_match.group(1)
-    elif msg.reply_to_message:
-        recipient_tag = msg.reply_to_message.from_user.username
-
-    if not recipient_tag:
-        await msg.reply_text("Укажи красачика или ответь на его сообщение.")
-        return
-
-    recipient = f"@{recipient_tag}"
-
-    if sender == recipient:
-        await msg.reply_text("Нельзя переводить себе ресурсы!")
-        return
-
-    balances = load_balances()
-    sender_resources = get_user_resources(sender, balances)
-    recipient_resources = get_user_resources(recipient, balances)
-
-    resource_index = list(RESOURCES.keys()).index(resource_short)
-    sender_level = balances[sender].get("уровень", 1)
-    recipient_level = balances[recipient].get("уровень", 1)
-
-    sender_limit = RESOURCE_LIMITS[resource_short](sender_level)
-    recipient_limit = RESOURCE_LIMITS[resource_short](recipient_level)
-
-    if sender_resources[resource_index] < amount:
-        await msg.reply_text(f"У тебя милаха недостаточно {resource_name}.")
-        return
-
-    if recipient_resources[resource_index] + amount > recipient_limit:
-        await msg.reply_text(f"У красавчика {recipient} нет места для {amount} {resource_name}.")
-        return
-
-    # Списываем у отправителя
-    sender_resources[resource_index] -= amount
-    update_user_resources(sender, balances, sender_resources)
-
-    # Начисляем получателю
-    recipient_resources[resource_index] += amount
-    update_user_resources(recipient, balances, recipient_resources)
-
-    await msg.reply_text(f"{sender} перевёл {amount} {resource_name} {recipient}.")
-async def handle_give_admin_resources(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if msg.from_user.username != ADMIN_USERNAME:
-        return
-
-    text = msg.text.strip()
-
-    # Удаляем префикс "рес дар" и обрабатываем оставшуюся часть
-    command = text.replace("рес дар", "").strip()
-    match = re.match(r'^(\d+)\s+(\w)(?:\s+@(\w+))?', command, re.IGNORECASE)
-    if not match:
-        return
-
-    amount = int(match.group(1))
-    resource_short = match.group(2).lower()
-    recipient_tag = match.group(3)
-
-    if resource_short not in RESOURCES:
-        await msg.reply_text("Неизвестный ресурс.")
-        return
-
-    resource_name = RESOURCES[resource_short]
-
-    if not recipient_tag and msg.reply_to_message:
-        recipient_tag = msg.reply_to_message.from_user.username
-
-    if not recipient_tag:
-        await msg.reply_text("Укажи получателя или ответь на его сообщение.")
-        return
-
-    recipient = f"@{recipient_tag}"
-    balances = load_balances()
-    recipient_resources = get_user_resources(recipient, balances)
-    recipient_level = balances[recipient].get("уровень", 1)
-
-    resource_index = list(RESOURCES.keys()).index(resource_short)
-    recipient_limit = RESOURCE_LIMITS[resource_short](recipient_level)
-
-    if recipient_resources[resource_index] + amount > recipient_limit:
-        await msg.reply_text(f"У {recipient} нет места для {amount} {resource_name}.")
-        return
-
-    recipient_resources[resource_index] += amount
-    update_user_resources(recipient, balances, recipient_resources)
-
-    await msg.reply_text(f"{recipient} получил {amount} {resource_name} от администрации.")
-async def handle_take_admin_resources(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if msg.from_user.username != ADMIN_USERNAME:
-        return
-
-    text = msg.text.strip()
-
-    # Удаляем префикс "рес отнять" и обрабатываем оставшуюся часть
-    command = text.replace("рес отнять", "").strip()
-    match = re.match(r'^(\d+)\s+(\w)(?:\s+@(\w+))?', command, re.IGNORECASE)
-    if not match:
-        return
-
-    amount = int(match.group(1))
-    resource_short = match.group(2).lower()
-    recipient_tag = match.group(3)
-
-    if resource_short not in RESOURCES:
-        await msg.reply_text("Неизвестный ресурс.")
-        return
-
-    resource_name = RESOURCES[resource_short]
-
-    if not recipient_tag and msg.reply_to_message:
-        recipient_tag = msg.reply_to_message.from_user.username
-
-    if not recipient_tag:
-        await msg.reply_text("Укажи получателя или ответь на его сообщение.")
-        return
-
-    recipient = f"@{recipient_tag}"
-    balances = load_balances()
-    recipient_resources = get_user_resources(recipient, balances)
-
-    resource_index = list(RESOURCES.keys()).index(resource_short)
-
-    if recipient_resources[resource_index] < amount:
-        await msg.reply_text(f"У {recipient} недостаточно {amount} {resource_name}.")
-        return
-
-    recipient_resources[resource_index] -= amount
-    update_user_resources(recipient, balances, recipient_resources)
-
-    await msg.reply_text(f"{recipient} лишился {amount} {resource_name}.")
-import re
 
 async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
+    if not msg or not msg.text:
+        return
+
     text = msg.text.strip()
 
-    # Разбиваем команду на части
-    match = re.match(r'^крафт\s+(\d+)\s+(печеньки|золотых печеньек)', text, re.IGNORECASE)
+    match = re.match(
+        r'^крафт\s+(\d+)\s+(печенька|печеньки|печенек|золотая печенька|золотых печенек|золотых печеньек|золото)$',
+        text, re.IGNORECASE
+    )
     if not match:
-        await msg.reply_text("Неверный формат. Используйте: крафт <количество> <печеньки|золотых печеньек>")
+        await msg.reply_text("Неверный формат. Используйте: крафт <кол-во> <печенька|золотая печенька>")
         return
 
     amount = int(match.group(1))
-    craft_type = match.group(2).lower()
+    craft_raw = match.group(2).lower()
+
+    # Нормализация типа
+    if "золот" in craft_raw or craft_raw == "золото":
+        craft_type = "золотая печенька"
+    else:
+        craft_type = "печенька"
 
     username = get_username_from_message(msg)
+    if not username:
+        await msg.reply_text("Ошибка: не удалось определить пользователя.")
+        return
+
     balances = load_balances()
     user_balances = balances.get(username)
-
     if user_balances is None:
-        await msg.reply_text("Вы не зарегистрированы. Начните с команды Баланс")
+        await msg.reply_text("Вы не зарегистрированы. Напишите Баланс для начала.")
         return
 
     resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
-    resources = list(map(int, resources_str.split('/')))
+    try:
+        resources = list(map(int, resources_str.split('/')))
+    except ValueError:
+        await msg.reply_text("Ошибка чтения ресурсов. Обратитесь к администратору.")
+        return
 
     # Индексы ресурсов
-    wheat_index = list(RESOURCES.keys()).index("п")
-    cocoa_index = list(RESOURCES.keys()).index("к")
-    cookie_index = list(RESOURCES.keys()).index("печенька")
-    gold_cookie_index = list(RESOURCES.keys()).index("р")
+    try:
+        wheat_index = list(RESOURCES.keys()).index("п")
+        cocoa_index = list(RESOURCES.keys()).index("к")
+        cookie_index = list(RESOURCES.keys()).index("печенька")
+        gold_cookie_index = list(RESOURCES.keys()).index("р")
+    except ValueError:
+        await msg.reply_text("Ошибка конфигурации ресурсов.")
+        return
 
-    # Крафт обычных печений
-    if craft_type == "печеньки":
+    if craft_type == "печенька":
         required_wheat = 2 * amount
         required_cocoa = 1 * amount
+
         if resources[wheat_index] < required_wheat or resources[cocoa_index] < required_cocoa:
-            await msg.reply_text(f"У вас недостаточно ресурсов для крафта {amount} Печенек.")
+            await msg.reply_text(f"Не хватает ресурсов для крафта {amount} обычных печенек.")
             return
 
         resources[wheat_index] -= required_wheat
         resources[cocoa_index] -= required_cocoa
         resources[cookie_index] += amount
 
-        log_transaction({
-            "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-            "type": "крафт",
-            "username": username,
-            "resource": "печенька",
-            "amount": amount
-        })
+        try:
+            log_transaction({
+                "timestamp": datetime.now(moscow_tz).isoformat(),
+                "type": "крафт",
+                "username": username,
+                "resource": "печенька",
+                "amount": amount
+            })
+        except:
+            pass
 
-        await msg.reply_text(f"Вы скрафтили {amount} обычных Печенек.")
+        await msg.reply_text(f"Вы скрафтили {amount} обычных печенек.")
 
-    # Крафт золотых печений
-    elif craft_type == "золотых печеньек" or craft_type == "золотых печенек":
+    elif craft_type == "золотая печенька":
         required_wheat = 2 * amount
         required_cocoa = 1 * amount
         required_cookies = 1 * amount
-        if resources[wheat_index] < required_wheat or resources[cocoa_index] < required_cocoa or resources[cookie_index] < required_cookies:
-            if resources[wheat_index] < required_wheat or resources[cocoa_index] < required_cocoa:
-                await msg.reply_text(f"У вас недостаточно ресурсов для крафта {amount} золотых Печенек.")
-                return
-            else:
-                resources[wheat_index] -= required_wheat
-                resources[cocoa_index] -= required_cocoa
-                resources[cookie_index] += amount
 
-                log_transaction({
-                    "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-                    "type": "крафт",
-                    "username": username,
-                    "resource": "печенька",
-                    "amount": amount
-                })
-
-                await msg.reply_text(f"У вас недостаточно золота для крафта {amount} золотых печений. Скрафтили {amount} обычных Печенек.")
-                return
+        if (
+            resources[wheat_index] < required_wheat or
+            resources[cocoa_index] < required_cocoa or
+            resources[cookie_index] < required_cookies
+        ):
+            await msg.reply_text(f"Не хватает ресурсов для крафта {amount} золотых печенек.")
+            return
 
         resources[wheat_index] -= required_wheat
         resources[cocoa_index] -= required_cocoa
         resources[cookie_index] -= required_cookies
         resources[gold_cookie_index] += amount
 
-        log_transaction({
-            "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-            "type": "крафт",
-            "username": username,
-            "resource": "золотая печенька",
-            "amount": amount
-        })
+        try:
+            log_transaction({
+                "timestamp": datetime.now(moscow_tz).isoformat(),
+                "type": "крафт",
+                "username": username,
+                "resource": "золотая печенька",
+                "amount": amount
+            })
+        except:
+            pass
 
-        await msg.reply_text(f"Вы скрафтили {amount} золотых Печенек.")
+        await msg.reply_text(f"Вы скрафтили {amount} золотых печенек.")
 
     else:
-        await msg.reply_text("Неизвестный тип крафта. Доступные типы: 'печеньки', 'золотых печенек'.")
+        await msg.reply_text("Неизвестный тип. Пример: крафт 1 печенька / крафт 1 золотая печенька")
+        return
 
-    # Обновляем ресурсы пользователя
+    # Обновление и сохранение
     user_balances["ресурсы"] = "/".join(map(str, resources))
     balances[username] = user_balances
     save_balances(balances)
+
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -1373,13 +1097,13 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_info_command(update, context)
     elif lower_text.startswith("обнова"):
         await handle_updates(update, context)
-    elif lower_text == "fox":             # ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+    elif lower_text == "bedwars":             # ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
         await update.message.reply_text("@hto_i_taki промик нашли!")
-    elif lower_text.startswith("рес дать"):
+    elif lower_text.startswith("рес дать") or lower_text.startswith("Рес дать"):
         await handle_give_resources(update, context)
-    elif lower_text.startswith("рес дар"):
+    elif lower_text.startswith("рес дар") or lower_text.startswith("Рес дар"):
         await handle_give_admin_resources(update, context)
-    elif lower_text.startswith("рес отнять"):
+    elif lower_text.startswith("рес отнять") or lower_text.startswith("Рес отнять"):
         await handle_take_admin_resources(update, context)
     elif lower_text.startswith("крафт"):
         await handle_craft(update, context)
@@ -1403,11 +1127,12 @@ commands_common = {
     "рес дать <число> <ресурс(одной буквой)>": "Передать ресурс другому игроку",
     "рес дар <число> <ресурс>": "Передать ресурс от администратора (админ)",
     "рес отнять <число> <ресурс>": "Отнять ресурс у игрока (админ)",
-    "крафт <количество> <печеньки|золотых печеньек>": "Скрафтить указанное количество печений"
+    "крафт <количество> <печенек|золотых печенек>": "Скрафтить указанное количество обычных или золотых печенек"
 }
 UPDATE_LOG = """
 📦 Последние обновления 🛠:
 
+✅ Исправлена команда крафт
 ✅ Исправлена выдача железа
 ✅ Обновлены все фразы бота
 ✅ Добавлено условие для перехода на 11-й Уровень(на каждые 10 уровней)
@@ -1433,7 +1158,7 @@ async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lines = ["📊 *Уровни*",
              "Уровень увеличивает фарм печенек и открывает новые возможности. "
-             "_Для прокачки высоких уровней потребуются ресурсы._\n"]
+             "Для прокачки высоких уровней потребуются ресурсы.\n"]
 
     for level in range(1, 11):
         min_amt, max_amt, chances = level_config[level]
