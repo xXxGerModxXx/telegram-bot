@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAHrS-oxE44ULDObzL_3ceQ9abbEvLr8CzQ"
+TOKEN = "7604409638:AAHFJiVzcAl3ged9NmQW_Umi2vHa16JIVM0"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -982,8 +982,8 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
         pass  # Ошибку лога игнорируем
 
     try:
-        if random.randint(1,100)<50:
-            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец, держи промо: BedWars")
+        if random.randint(1,100)<40:
+            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец, держи промо: promokod986")
         else:
             await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец")
     except:
@@ -1479,7 +1479,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_info_command(update, context)
     elif lower_text.startswith("обнова"):
         await handle_updates(update, context)
-    elif lower_text == "bedwars":             # ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+    elif lower_text == "promokod986":             # ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
         await update.message.reply_text("@hto_i_taki промик нашли!")
     elif lower_text.startswith("рес дать") or lower_text.startswith("Рес дать"):
         await handle_give_resources(update, context)
