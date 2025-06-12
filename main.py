@@ -402,7 +402,6 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     text = msg.text.strip()
 
-    # Регулярка теперь ищет: "дать N [название валюты]"
     match = re.match(r'^дать\s+(\d+)(?:\s+(печеньки|трилистника|трилистники|четырёхлистника|четырёхлистники))?', text, re.IGNORECASE)
     if not match:
         await msg.reply_text("Неверный формат. Используйте: дать <количество> [название валюты]")
@@ -411,10 +410,8 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     amount = int(match.group(1))
     currency_text = match.group(2)
 
-    # Приводим к правильному ключу валюты
     if currency_text:
         currency_text = currency_text.lower()
-        # нормализуем варианты
         if currency_text in ("трилистника", "трилистники"):
             currency = "трилистники"
         elif currency_text in ("четырёхлистника", "четырёхлистники"):
@@ -425,12 +422,10 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         currency = "печеньки"
 
     recipient_tag = None
-    # Ищем получателя: либо через @, либо в ответе на сообщение
-    # Пример: "дать 10 трилистника @username"
     recipient_match = re.search(r'@(\w+)', text)
     if recipient_match:
         recipient_tag = recipient_match.group(1)
-    elif msg.reply_to_message:
+    elif msg.reply_to_message and msg.reply_to_message.from_user.username:
         recipient_tag = msg.reply_to_message.from_user.username
 
     if not recipient_tag:
@@ -451,7 +446,6 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(f"Кажется в мешочке не хватает {currency}.")
         return
 
-    # Списываем и начисляем
     sender_balances[currency] = sender_balances.get(currency, 0) - amount
     balances[sender] = sender_balances
 
@@ -469,7 +463,11 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "amount": amount
     })
 
-    await msg.reply_text(f"{sender} дружески отдал {amount} {currency} {CURRENCIES[currency]} {recipient}.\n")
+    try:
+        await msg.reply_text(f"{sender} дружески отдал {amount} {currency} {CURRENCIES.get(currency, '')} {recipient}.")
+    except:
+        await msg.reply_text("Передача прошла, но не получилось отправить сообщение о ней.")
+
 
 
 async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
