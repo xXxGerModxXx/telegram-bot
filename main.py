@@ -1660,6 +1660,7 @@ level_config = {
 
 }
 if __name__ == '__main__':
+    threading.Thread(target=start_dummy_server).start()
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))
     print("Бот запущен...")
