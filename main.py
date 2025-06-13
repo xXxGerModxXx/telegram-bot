@@ -31,7 +31,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAGlWH85OTdXBmtAmtovLYnYDsBdN-RfAJE"
+TOKEN = "7604409638:AAFM3aXllaaAsneJjsWi55E2mydb4hRYvPI"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -203,7 +203,7 @@ def save_lottery(data, allow_empty=False):
 
 
 import threading
-import os
+
 
 
 file_lock = threading.Lock()
@@ -297,13 +297,7 @@ def can_farm_today(last_farm_str: str) -> bool:
 
     now = datetime.now()
     return now.date() > last_farm.date()
-from datetime import datetime
 
-import random
-
-from datetime import datetime
-
-from datetime import datetime
 
 from datetime import datetime, timedelta, timezone
 
@@ -483,11 +477,9 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await msg.reply_text("Передача прошла, но не получилось отправить сообщение о ней.")
 
-from datetime import datetime, timedelta, timezone
 
-from datetime import datetime, timedelta, timezone
 
-moscow_tz = timezone(timedelta(hours=3))
+
 
 async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -550,11 +542,11 @@ async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 from datetime import datetime, timedelta, timezone
 
-moscow_tz = timezone(timedelta(hours=3))
+
 
 from datetime import datetime, timedelta, timezone
 
-moscow_tz = timezone(timedelta(hours=3))
+
 
 async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -1449,7 +1441,7 @@ async def handle_resources_info(update: Update, context: ContextTypes.DEFAULT_TY
 Редчайший ресурс.  
 ▸ Фиксированный шанс: `3%` (на уровнях от 1 до 10).
 
-- *🌟 Золотые печеньки*  
+- *🏵 Золотые печеньки*  
 ▸ Крафт: `2 пшеницы + 1 какао-боб + 1 золото = 1 золотая печенька`.  
 ▸ Используются для получения высоких уровней.
 
