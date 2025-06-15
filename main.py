@@ -1,16 +1,12 @@
-import json
-import os
-import re
+
 import sys  # <-- обязательно нужен для sys.exit
 import logging
-from telegram import Update, Message
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
-import threading
-from flask import Flask
+from telegram import Update
+
 import threading
 from flask import Flask
 import os
-from telegram.ext import ApplicationBuilder, MessageHandler, filters
+
 # 🔐 Защита от повторного запуска
 logging.info("Бот запускается...")  # это будет выведено только при первом запуске
 ADMIN_CHAT_ID = 844673891  # Твой chat_id
@@ -31,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAFM3aXllaaAsneJjsWi55E2mydb4hRYvPI"
+TOKEN = "7604409638:AAEZFRWYHDhOjp6jD_cZQp4YhKhNhEOrp6A"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -71,8 +67,7 @@ def start_bot():
 LEVELS_PRICE_FILE = 'levels_price.json'
 
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
-from telegram.ext import JobQueue
-import datetime
+
 
 def load_levels_price():
     if not os.path.exists(LEVELS_PRICE_FILE):
@@ -217,7 +212,7 @@ def load_balances():
 
 import random
 import datetime
-from telegram import User, Chat, Message, Update
+from telegram import Message, Update
 
 file_lock1 = threading.Lock()
 
@@ -281,8 +276,8 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = resources[index]
         limit = RESOURCE_LIMITS[resource_short](level)  # Получаем лимит для ресурса
         lines.append(f"  {amount}/{limit} {resource_name} ({resource_short})")
-    if random.randint(1,100)<0:
-        await update.message.reply_text("промокод: fox  (напиши fox в чат) ".join(lines))
+    if random.randint(1,100)<chanse_balance:
+        await update.message.reply_text(f"\n промокод: {PROMO}\n".join(lines))
     else:
         await update.message.reply_text("\n".join(lines))
 
@@ -299,7 +294,7 @@ def can_farm_today(last_farm_str: str) -> bool:
     return now.date() > last_farm.date()
 
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 
 moscow_tz = timezone(timedelta(hours=3))
 
@@ -540,11 +535,7 @@ async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await msg.reply_text("Передача прошла, но сообщение не получилось отправить.")
 
-from datetime import datetime, timedelta, timezone
 
-
-
-from datetime import datetime, timedelta, timezone
 
 
 
@@ -901,7 +892,7 @@ def safe_load_lottery():
 
 
 
-from datetime import datetime, timedelta, timezone
+
 
 
 
@@ -974,8 +965,8 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
         pass  # Ошибку лога игнорируем
 
     try:
-        if random.randint(1,100)<40:
-            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец, держи промо: promokod986")
+        if random.randint(1,100)<chanse_N:
+            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец, держи промо: "+ PROMO)
         else:
             await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец")
     except:
@@ -1138,7 +1129,7 @@ async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TY
 
     await msg.reply_text(f"{sender} перевёл {amount} {resource_name} {recipient}.")
 
-from datetime import datetime, timedelta, timezone
+
 
 
 
@@ -1450,7 +1441,38 @@ async def handle_resources_info(update: Update, context: ContextTypes.DEFAULT_TY
 """
 
     await update.message.reply_text(text, parse_mode="Markdown")
+ULTRAHELP_INFO = """🔮 *УльтХелп — Ультемативная Помощь от Создателя*
 
+Позволяет расширить функциональность вашей механики (механика — это ваша идея/бизнес по заработку Печенек и т.п.).
+УльтХелпы продаются за Печеньки. Каждый игрок может придумать свою механику (например, своё казино).
+
+⚠️ *Предупреждение:* Прочитайте все УльтХелпы, чтобы случайно не потерять Печеньки!
+
+---
+
+🎰 *УльтХелп: Эмодзи Казино*
+👤 Владелец: Gaster999  
+📜 Описание:  
+При использовании его эмодзи Казино вы автоматически участвуете в его казино.
+
+💸 *Условия казино от Gaster999:*  
+• Стоимость игры: 1 Печенька  
+• Приз за 3 в ряд: 5 Печенек  
+🎮 Для игры переведите по 1 Печеньке за игру Gaster999 командой `дать 1` (с указанием на его сообщение или допишите его тег в конце) и киньте эмодзи казино.
+
+---
+
+🎲 *УльтХелп: Эмодзи Кубик*
+👤 Владелец: Shittttt  
+📜 Описание:  
+При использовании его эмодзи Кубик вы автоматически участвуете в его игре *Покер*.
+"""
+SHOP_KEYWORDS = [
+    "магазин", "печеньки", "печенек", "зачем нужны печеньки", "зачем нужны печенья",
+    "куда тратить печеньки", "что делать с печеньками", "на что потратить печеньки",
+    "можно ли купить", "продажа", "покупка", "как использовать печеньки",
+    "обменять печеньки", "награды за печеньки"
+]
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -1514,7 +1536,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_info_command(update, context)
     elif lower_text.startswith("обнова"):
         await handle_updates(update, context)
-    elif lower_text == "promokod986":             # ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+    elif lower_text == PROMO:
         await update.message.reply_text("@hto_i_taki промик нашли!")
     elif lower_text.startswith("рес дать") or lower_text.startswith("Рес дать"):
         await handle_give_resources(update, context)
@@ -1526,8 +1548,21 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_craft(update, context)
     elif lower_text == "ресурсы":
         await handle_resources_info(update, context)
+    elif lower_text in ["казино", "эмодзи", "ультхелп", "ультхелпы", "помощь"]:
+        await update.message.reply_text(ULTRAHELP_INFO, parse_mode="Markdown")
+    elif lower_text in ["окак"]:
+        await update.message.reply_text("отак", parse_mode="Markdown")
+    elif any(keyword in lower_text for keyword in SHOP_KEYWORDS):
+        await update.message.reply_text(SHOP_INFO, parse_mode="Markdown")
+    elif any(keyword in lower_text for keyword in "котик"):
+        await update.message.reply_text("Я хороший Котик!", parse_mode="Markdown")
+    elif random.randint(1,100)<=chanse_vezde:
+        await update.message.reply_text(f"Ты мне понравился, держи промо: {PROMO}")
 
-
+PROMO = "i love @catcookie_bot"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+chanse_N = 40
+chanse_balance = 0
+chanse_vezde = 1
 commands_common = {
     "обнова": "Показать список обновлений",
     "баланс": "Показать текущий баланс и уровень",
@@ -1549,11 +1584,17 @@ commands_common = {
     "рес дар <число> <ресурс>": "Передать ресурс от администратора (админ)",
     "рес отнять <число> <ресурс>": "Отнять ресурс у игрока (админ)",
     "крафт <количество> <печенек|золотых печенек>": "Скрафтить указанное количество обычных или золотых печенек",
-    "ресурсы": "Описание всех ресурсов, их шансов выпадения и формул"
+    "ресурсы": "Описание всех ресурсов, их шансов выпадения и формул",
+    "УльтХелп": "Информация о УльтХелпах Игроков",
+    "магазин": "Показать, что можно купить за печеньки, ресурсы"
 }
+
 UPDATE_LOG = """
 📦 Последние обновления 🛠:
 
+✅ Добавлены две особые и самые важные команды
+✅ Добавлена команда "Магазин"
+✅ Бот реагирует на "казино", "эмодзи", "ультхелп", "ультхелпы", "помощь" и выводит команду "ультхелп"
 ✅ Добавлена команда "Ресурсы" для объяснения 
 ✅ Обновлена команда "Уровень"
 ✅ Исправлена команда крафт
@@ -1612,6 +1653,28 @@ async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+SHOP_INFO = """🛍️ *Добро пожаловать в Магазин Печенек!*
+Теперь за Печеньки также можно купить:
+🍪 3 часа у репетитора по программированию на *C++*  
+💰 Цена: *4000 печенек*
+🍪 2 часа у репетитора по *C#*  
+💰 Цена: *3000 печенек*
+🍪 2 часа у репетитора по *Python*  
+💰 Цена: *2000 печенек*
+📈 3 часа у репетитора по *Ценным Бумагам, биржам, трейдингу, акциям и заработку в интернете*  
+💰 Цена: *5000 печенек*
+🎁 *Скидка 50%* на часы у репетитора  
+💰 Цена: *1 ☘️* или *5000 печенек*
+🪜 Место на второй ступени *без сражения на первой*  
+💰 Цена: *100 печенек*
+🏆 Место в Финале Подготовительного Этапа *без сражений на ступенях*  
+💰 Цена: *200 печенек*
+🎯 Место в Первом Этапе *без участия в Подготовительном*  
+💰 Цена: *300 печенек*
+💎 Бонус-предложение:  
+Продам *1 ☘️* первому желающему — *всего за 2 изумруда*!
+📩 Для покупки пишите *Адину* — `@hto_i_taki` (Ягами)
+"""
 
 
 TRANSACTION_LOG_FILE = "transactions.json"
