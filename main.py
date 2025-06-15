@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAEZFRWYHDhOjp6jD_cZQp4YhKhNhEOrp6A"
+TOKEN = "7604409638:AAECcs9X3-22_5TqHPd2g8AdSkBIMF2HViM"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -1554,8 +1554,9 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("отак", parse_mode="Markdown")
     elif any(keyword in lower_text for keyword in SHOP_KEYWORDS):
         await update.message.reply_text(SHOP_INFO, parse_mode="Markdown")
-    elif any(keyword in lower_text for keyword in "котик"):
+    elif any(keyword in lower_text for keyword in ["котик", "кот", "киса", "кошак", "котя", "котёнок"]):
         await update.message.reply_text("Я хороший Котик!", parse_mode="Markdown")
+
     elif random.randint(1,100)<=chanse_vezde:
         await update.message.reply_text(f"Ты мне понравился, держи промо: {PROMO}")
 
