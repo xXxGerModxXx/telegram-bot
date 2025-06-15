@@ -748,6 +748,16 @@ excluded_users = {"@hto_i_taki", "@Shittttt", "@zZardexe", "@insanemaloy"}  # а
 excluded_users_Admin = {"@hto_i_taki", "@Eparocheck"}  # исключить полностью
 
 async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    group_username = "@WardShield3"
+
+    try:
+        member = await context.bot.get_chat_member(group_username, user_id)
+        if member.status not in ("member", "administrator", "creator"):
+            return  # Не участник — молчим
+    except:
+        return  # Ошибка — тоже молчим
+
     balances = load_balances()
 
     def clean_username(name):
@@ -772,21 +782,18 @@ async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reverse=True
     )[:5]
 
-    # Топ 5 по Печенькам без админов
     top_cookies_no_admins = sorted(
         balances_no_admins.items(),
         key=lambda x: x[1].get("печеньки", 0),
         reverse=True
     )[:5]
 
-    # Топ 5 по Уровням (все, кроме @hto_i_taki)
     top_levels = sorted(
         balances_no_admin_global.items(),
         key=lambda x: x[1].get("уровень", 1),
         reverse=True
     )[:5]
 
-    # Топ 5 по Уровням без админов
     top_levels_no_admins = sorted(
         balances_no_admins.items(),
         key=lambda x: x[1].get("уровень", 1),
@@ -873,15 +880,27 @@ async def handle_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         await update.message.reply_text(message)
 
+GROUP_USERNAME = "@WardShield3"  # Юзернейм группы
+
 async def handle_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    try:
+        member = await context.bot.get_chat_member(GROUP_USERNAME, user_id)
+        if member.status not in ("member", "administrator", "creator"):
+            return  # Не участник — молчим
+    except:
+        return  # Ошибка запроса или бот не в группе — тоже молчим
+
     await update.message.reply_text(
         "📌 <b>WardShield Server Info</b>\n\n"
-        "💬 <b>Telegram чат:</b> <a href='https://t.me/+aLhslgqdoz1kYjky'>вступить</a>\n"
+        "💬 <b>Telegram чат:</b> <a href='https://t.me/WardShield3'>вступить</a>\n"
         "🌐 <b>IP:</b> <code>WardShield_3.aternos.me</code>\n"
         "🎮 <b>Версия Minecraft:</b> 1.21.1",
         parse_mode="HTML",
         disable_web_page_preview=True
     )
+
 
 def safe_load_lottery():
     with lottery_lock:
@@ -1496,6 +1515,55 @@ async def notify_admin_on_error(context, where: str, exception: Exception):
         await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=message, parse_mode="Markdown")
     except Exception as e:
         print("❌ Не удалось отправить сообщение админу:", e)
+async def handle_random_giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if msg.from_user.username != ADMIN_USERNAME:
+        return
+
+    text = msg.text.strip()
+    match = re.match(r'^раздача\s+(\d+)\s+(\d+)\s+(\d+)', text, re.IGNORECASE)
+    if not match:
+        await msg.reply_text("Формат: раздача <уровень (0 = любой)> <кол-во игроков> <сумма>")
+        return
+
+    level_filter = int(match.group(1))
+    player_count = int(match.group(2))
+    amount = int(match.group(3))
+
+    balances = load_balances()
+
+    # Фильтруем подходящих игроков
+    candidates = [
+        user for user, data in balances.items()
+        if user not in excluded_users_Admin and isinstance(data, dict)
+        and (level_filter == 0 or data.get("уровень", 1) == level_filter)
+    ]
+
+    if len(candidates) < player_count:
+        await msg.reply_text(f"Недостаточно игроков уровня {level_filter} для раздачи.")
+        return
+
+    selected_users = random.sample(candidates, player_count)
+    for user in selected_users:
+        balances[user]["печеньки"] = balances[user].get("печеньки", 0) + amount
+
+        # Логируем каждую раздачу
+        try:
+            log_transaction({
+                "timestamp": datetime.now(moscow_tz).isoformat(),
+                "type": "раздача",
+                "from": "бот",
+                "to": user,
+                "currency": "печеньки",
+                "amount": amount
+            })
+        except:
+            pass
+
+    save_balances(balances)
+    names = ', '.join(selected_users)
+    await msg.reply_text(f"🎉 {amount} 🍪 выданы {player_count} игрокам: {names}")
+
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -1585,7 +1653,15 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Ты мне понравился, держи промо: {PROMO}")
     elif random.randint(1,100)<=2:
         await update.message.reply_text(f"А ты любишь Печеньки?")
-PROMO = "i love @catcookie_bot"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+    elif random.randint(1,100)<=2:
+        await update.message.reply_text(f"Напиши \"N <число>\" что бы купить N билетиков")
+    elif random.randint(1,100)<=2:
+        await update.message.reply_text(f"А ты сегодня уже получал Печеньки?")
+
+    elif lower_text.startswith("раздача"):
+        await handle_random_giveaway(update, context)
+
+PROMO = "newpromo"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
 chanse_N = 40
 chanse_balance = 0
 chanse_vezde = 1
@@ -1618,19 +1694,20 @@ commands_common = {
 UPDATE_LOG = """
 📦 Последние обновления 🛠:
 
+✅ Понижены цены на повышение Уровнней
 ✅ Добавлены две особые и самые важные команды
 ✅ Добавлена команда "Магазин"
 ✅ Бот реагирует на "казино", "эмодзи", "ультхелп", "ультхелпы", "помощь" и выводит команду "ультхелп"
-✅ Добавлена команда "Ресурсы" для объяснения 
-✅ Обновлена команда "Уровень"
-✅ Исправлена команда крафт
-✅ Исправлена выдача железа
-✅ Обновлены все фразы бота
-✅ Добавлено условие для перехода на 11-й Уровень(на каждые 10 уровней)
-✅ Максимальный Уровень прописан до 20-го
-✅ Добавлены бонусы в команде "Хочу Печеньки"
-✅ Добавлена команда крафт <количество> <печеньки|золотых печеньек> 
-✅ Добавлена Пшеница, Какао-бобы, железо, золото, алмазы, изумруды ️
+ Добавлена команда "Ресурсы" для объяснения 
+ Обновлена команда "Уровень"
+ Исправлена команда крафт
+ Исправлена выдача железа
+ Обновлены все фразы бота
+ Добавлено условие для перехода на 11-й Уровень(на каждые 10 уровней)
+ Максимальный Уровень прописан до 20-го
+ Добавлены бонусы в команде "Хочу Печеньки"
+ Добавлена команда крафт <количество> <печеньки|золотых печеньек> 
+ Добавлена Пшеница, Какао-бобы, железо, золото, алмазы, изумруды ️
  Добавлена доп защита от отката в билетах ️
  Обновлена  фраза  в балансе ️
  Исправлена команда "N <число>" — покупка билетов 🎟️
@@ -1663,13 +1740,13 @@ async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("Доступен при достижении нужного уровня. Цена — в 2 раза ниже.\n")
     lines.append("*Формат:* `(Ступень — Этап) : Уровень`")
     lines.append("""
-📌 *Подготовка*
+📌 *Подготовительный Этап*
 - 1 ст. : 2 ур
 - 2 ст. : 4 ур
 - 3 ст. : 6 ур
 - Финал ПЭ : 8 ур
 
-📌 *Основной этап*
+📌 *Основное Событие*
 - 1 этап : 10 ур
 - 2 этап : 12 ур
 - 3 этап : 14 ур
@@ -1679,6 +1756,29 @@ async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+level_config = {
+    1: (0, 2, [0.49, 0.5, 0.01]),
+    2: (0, 2, [0.19, 0.8, 0.01]),
+    3: (0, 2, [0.19, 0.4, 0.41]),
+    4: (0, 4, [0.09, 0.25, 0.25, 0.4, 0.01]),
+    5: (1, 4, [0.19, 0.3, 0.5,0.01]),
+    6: (1, 4, [0.05, 0.4, 0.4, 0.15]),
+    7: (2, 4, [0.4, 0.4,0.2]),
+    8: (2, 5, [0.2, 0.4,0.3,0.1]),
+    9: (2, 5, [0.1, 0.3,0.4,0.2]),
+    10: (2, 6, [0.1, 0.2, 0.5, 0.15, 0.05]),
+    11: (3, 7, [0.1, 0.2, 0.5, 0.15, 0.05]),
+    12: (3, 7, [0.1, 0.15, 0.55, 0.15, 0.05]),
+    13: (3, 7, [0.05, 0.2, 0.55, 0.15, 0.05]),
+    14: (3, 7, [0.05, 0.15, 0.6, 0.15, 0.05]),
+    15: (4, 7, [0.15, 0.6, 0.15, 0.1]),
+    16: (4, 7, [0.1, 0.6, 0.2, 0.1]),
+    17: (4, 7, [0.05, 0.65, 0.2, 0.1]),
+    18: (5, 7, [0.7, 0.2, 0.1]),
+    19: (5, 7, [0.6, 0.3, 0.1]),
+    20: (5, 7, [0.5, 0.4, 0.1]),
+
+}
 SHOP_INFO = """🛍️ *Добро пожаловать в Магазин Печенек!*
 Теперь за Печеньки также можно купить:
 🍪 3 часа у репетитора по программированию на *C++*  
@@ -1717,29 +1817,7 @@ def log_transaction(entry: dict):
     with open(TRANSACTION_LOG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-level_config = {
-    1: (0, 2, [0.49, 0.5, 0.01]),
-    2: (0, 2, [0.19, 0.8, 0.01]),
-    3: (0, 2, [0.19, 0.4, 0.41]),
-    4: (0, 4, [0.09, 0.25, 0.25, 0.4, 0.01]),
-    5: (1, 4, [0.19, 0.3, 0.5,0.01]),
-    6: (1, 4, [0.05, 0.4, 0.4, 0.15]),
-    7: (2, 4, [0.4, 0.4,0.2]),
-    8: (2, 5, [0.2, 0.4,0.3,0.1]),
-    9: (2, 5, [0.1, 0.3,0.4,0.2]),
-    10: (2, 6, [0.1, 0.2, 0.5, 0.15, 0.05]),
-    11: (3, 7, [0.1, 0.2, 0.5, 0.15, 0.05]),
-    12: (3, 7, [0.1, 0.15, 0.55, 0.15, 0.05]),
-    13: (3, 7, [0.05, 0.2, 0.55, 0.15, 0.05]),
-    14: (3, 7, [0.05, 0.15, 0.6, 0.15, 0.05]),
-    15: (4, 7, [0.15, 0.6, 0.15, 0.1]),
-    16: (4, 7, [0.1, 0.6, 0.2, 0.1]),
-    17: (4, 7, [0.05, 0.65, 0.2, 0.1]),
-    18: (5, 7, [0.7, 0.2, 0.1]),
-    19: (5, 7, [0.6, 0.3, 0.1]),
-    20: (5, 7, [0.5, 0.4, 0.1]),
 
-}
 if __name__ == '__main__':
     threading.Thread(target=start_dummy_server).start()
     app = ApplicationBuilder().token(TOKEN).build()
