@@ -398,24 +398,24 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     text = msg.text.strip()
 
-    match = re.match(r'^дать\s+(\d+)(?:\s+(печеньки|трилистника|трилистники|четырёхлистника|четырёхлистники))?', text, re.IGNORECASE)
+    match = re.match(r'^дать\s+(\d+)(?:\s+(печеньки|трилистника|трилистники|четырёхлистника|четырёхлистники))?\b', text, re.IGNORECASE)
     if not match:
         await msg.reply_text("Неверный формат. Используйте: дать <количество> [название валюты]")
         return
 
     amount = int(match.group(1))
-    currency_text = match.group(2)
+    if amount <= 0:
+        await msg.reply_text("Количество должно быть положительным числом.")
+        return
 
+    currency_text = match.group(2)
+    currency = "печеньки"
     if currency_text:
         currency_text = currency_text.lower()
         if currency_text in ("трилистника", "трилистники"):
             currency = "трилистники"
         elif currency_text in ("четырёхлистника", "четырёхлистники"):
             currency = "четырёхлистники"
-        else:
-            currency = "печеньки"
-    else:
-        currency = "печеньки"
 
     recipient_tag = None
     recipient_match = re.search(r'@(\w+)', text)
@@ -432,32 +432,31 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     recipient = f"@{recipient_tag}"
 
     if sender == recipient:
-        await msg.reply_text("Нельзя переводить себе !")
+        await msg.reply_text("Нельзя переводить себе!")
         return
 
     balances = load_balances()
-    sender_balances = balances.get(sender, {curr: 0 for curr in CURRENCIES})
+
+    if sender not in balances:
+        balances[sender] = {"уровень": 1, **{curr: 0 for curr in CURRENCIES}, "ресурсы": "0/0/0/0/0/0/0", "последний фарм": ""}
+    if recipient not in balances:
+        balances[recipient] = {"уровень": 1, **{curr: 0 for curr in CURRENCIES}, "ресурсы": "0/0/0/0/0/0/0", "последний фарм": ""}
+
+    sender_balances = balances[sender]
+    recipient_balances = balances[recipient]
 
     if sender_balances.get(currency, 0) < amount:
-        await msg.reply_text(f"Кажется в мешочке не хватает {currency}.")
+        await msg.reply_text(f"Кажется, в мешочке не хватает {currency}.")
         return
 
-    sender_balances[currency] = sender_balances.get(currency, 0) - amount
-    balances[sender] = sender_balances
-
-    recipient_balances = balances.get(recipient, {curr: 0 for curr in CURRENCIES})
-    recipient_balances[currency] = recipient_balances.get(currency, 0) + amount
-    balances[recipient] = recipient_balances
+    sender_balances[currency] -= amount
+    recipient_balances[currency] += amount
 
     save_balances(balances)
 
-
-
-    moscow_tz = timezone(timedelta(hours=3))
-
     try:
         log_transaction({
-            "timestamp": datetime.now(moscow_tz).isoformat(),
+            "timestamp": datetime.now(timezone(timedelta(hours=3))).isoformat(),
             "type": "дать",
             "from": str(sender),
             "to": str(recipient),
@@ -465,7 +464,7 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "amount": amount
         })
     except Exception:
-        pass  # Ошибка при логировании — продолжаем без лога
+        pass
 
     try:
         await msg.reply_text(f"{sender} дружески отдал {amount} {currency} {CURRENCIES.get(currency, '')} {recipient}.")
@@ -724,7 +723,12 @@ async def handle_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"{cmd} — {desc}")
 
     await update.message.reply_text("\n".join(lines))
-
+async def handle_commands_not_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    filtered_commands = {cmd: desc for cmd, desc in commands_common.items() if "(админ)" not in desc}
+    lines = ["Тебе красавчик доступное следующее:"]
+    for cmd, desc in filtered_commands.items():
+        lines.append(f"{cmd} — {desc}")
+    await update.message.reply_text("\n".join(lines))
 
 def get_cookies_by_level(level: int) -> int:
     # Определяем диапазон и веса вероятностей по уровню
@@ -1473,6 +1477,25 @@ SHOP_KEYWORDS = [
     "можно ли купить", "продажа", "покупка", "как использовать печеньки",
     "обменять печеньки", "награды за печеньки"
 ]
+MOSCOW_TZ = timezone(timedelta(hours=3))
+import traceback
+async def notify_admin_on_error(context, where: str, exception: Exception):
+    time_str = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    tb = ''.join(traceback.format_exception(type(exception), exception, exception.__traceback__))
+
+    message = (
+        f"⚠️ *Ошибка в боте!*\n"
+        f"*Где:* `{where}`\n"
+        f"*Когда:* `{time_str}`\n"
+        f"*Тип:* `{type(exception).__name__}`\n"
+        f"*Сообщение:* `{str(exception)}`\n"
+        f"*Traceback:* ```{tb[-900:]}```"
+    )
+
+    try:
+        await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=message, parse_mode="Markdown")
+    except Exception as e:
+        print("❌ Не удалось отправить сообщение админу:", e)
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -1524,8 +1547,10 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await maybe_save_admin(update, context)
     elif lower_text.startswith("новые цены") and username == f"@{ADMIN_USERNAME}":
         await handle_update_prices(update, context)
-    elif lower_text == "команды":
+    elif lower_text == "все команды":
         await handle_commands(update, context)
+    elif lower_text == "команды":
+        await handle_commands_not_admin(update, context)
     elif lower_text == "топ" or lower_text == "топчик":
         await handle_top(update, context)
     elif lower_text == "уровень":
@@ -1554,12 +1579,12 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("отак", parse_mode="Markdown")
     elif any(keyword in lower_text for keyword in SHOP_KEYWORDS):
         await update.message.reply_text(SHOP_INFO, parse_mode="Markdown")
-    elif any(keyword in lower_text for keyword in ["котик", "кот", "киса", "кошак", "котя", "котёнок"]):
-        await update.message.reply_text("Я хороший Котик!", parse_mode="Markdown")
-
+    elif re.search(r'\b(котик|кот|киса|кошак|котя|котёнок)\b', lower_text):
+            await update.message.reply_text("Я хороший Котик!", parse_mode="Markdown")
     elif random.randint(1,100)<=chanse_vezde:
         await update.message.reply_text(f"Ты мне понравился, держи промо: {PROMO}")
-
+    elif random.randint(1,100)<=2:
+        await update.message.reply_text(f"А ты любишь Печеньки?")
 PROMO = "i love @catcookie_bot"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
 chanse_N = 40
 chanse_balance = 0
