@@ -41,19 +41,15 @@ CURRENCIES = {
     "четырёхлистники": "🍀"
 }
 LOTTERY_FILE = 'lottery.json'
-# === Ваш обработчик сообщений ===
+# Flask-заглушка
+flask_app = Flask(__name__)
 
+@flask_app.route("/")
+def home():
+    return "OK"
 
-# === Заглушка HTTP-сервер для Render ===
 def start_dummy_server():
-    app = Flask(__name__)
-
-    @app.route('/')
-    def index():
-        return "Бот работает!"
-
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    flask_app.run(host="0.0.0.0", port=10000)
 
 # === Запуск бота ===
 def start_bot():
@@ -1833,7 +1829,10 @@ def log_transaction(entry: dict):
 
 
 if __name__ == '__main__':
-    threading.Thread(target=start_dummy_server).start()
+    # Заглушка Flask — в фоновом потоке
+    threading.Thread(target=start_dummy_server, daemon=True).start()
+
+    # Бот — в главном потоке
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))
     print("Бот запущен...")
