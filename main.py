@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAF6zasshPB-jpSRYAfxOhNtJhF_JDwdt2Q"
+TOKEN = "7604409638:AAEbE_cLS5ccaTE3pUhfZCLaAUBu-H4k4q8"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
