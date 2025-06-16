@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAFUlmeU-T7PRcgProUz5yN_1_Ar6nQyRPM"
+TOKEN = "7604409638:AAF6zasshPB-jpSRYAfxOhNtJhF_JDwdt2Q"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -1624,7 +1624,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_want_cookies(update, context)
         if random.random() < 0.2:
             await maybe_save_admin(update, context)
-    elif lower_text == "повысить уровень":
+    elif lower_text == "повысить уровень" or lower_text == "поднять уровень":
         await handle_level_up(update, context)
         if random.random() < 0.25:
             await maybe_save_admin(update, context)
@@ -1664,21 +1664,21 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(SHOP_INFO, parse_mode="Markdown")
     elif re.search(r'\b(котик|кот|киса|кошак|котя|котёнок)\b', lower_text):
             await update.message.reply_text("Я хороший Котик!", parse_mode="Markdown")
-    elif random.randint(1,100)<=chanse_vezde:
+    elif random.randint(1,1000)<=chanse_vezde:
         await update.message.reply_text(f"Ты мне понравился, держи промо: {PROMO}")
-    elif random.randint(1,100)<=2:
+    elif random.randint(1,1000)<=8:
         await update.message.reply_text(f"А ты любишь Печеньки?")
-    elif random.randint(1,100)<=2:
+    elif random.randint(1,1000)<=8:
         await update.message.reply_text(f"Напиши \"N <число>\" что бы купить N билетиков")
-    elif random.randint(1,100)<=2:
+    elif random.randint(1,1000)<=8:
         await update.message.reply_text(f"А ты сегодня уже получал Печеньки?")
     elif lower_text.startswith("раздача"):
         await handle_random_giveaway(update, context)
 
-PROMO = "newpromo"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
-chanse_N = 40
+PROMO = "<промо находится в опиcании ТГК>"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+chanse_N = 35
 chanse_balance = 0
-chanse_vezde = 1
+chanse_vezde = 3
 commands_common = {
     "🆕 обнова": "Показать список обновлений",
     "💰 баланс": "Показать текущий баланс и уровень",
