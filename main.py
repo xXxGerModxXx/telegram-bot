@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAH33GPBT5qIokYuk6p7S1djiZCxJ4NLL9U"
+TOKEN = "7604409638:AAFszZS0CmqCqnaUUPrSXVexmF9HISopvxM"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -1563,6 +1563,21 @@ async def handle_random_giveaway(update: Update, context: ContextTypes.DEFAULT_T
     save_balances(balances)
     names = ', '.join(selected_users)
     await msg.reply_text(f"🎉 {amount} 🍪 выданы {player_count} игрокам: {names}")
+async def handle_ultrahelp_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text.lower()
+    group_username = "@WardShield3"
+    keywords = ["казино", "эмодзи", "ультхелп", "ультхелпы", "помощь"]
+
+    try:
+        member = await context.bot.get_chat_member(group_username, user_id)
+        if member.status not in ("member", "administrator", "creator"):
+            return  # Не участник — молчим
+    except:
+        return  # Ошибка — молчим
+
+    if any(keyword in text for keyword in keywords):
+        await update.message.reply_text(ULTRAHELP_INFO, parse_mode="Markdown")
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -1641,8 +1656,8 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_craft(update, context)
     elif lower_text == "ресурсы":
         await handle_resources_info(update, context)
-    elif lower_text in ["казино", "эмодзи", "ультхелп", "ультхелпы", "помощь"]:
-        await update.message.reply_text(ULTRAHELP_INFO, parse_mode="Markdown")
+    elif any(k in lower_text for k in ["казино", "эмодзи", "ультхелп", "ультхелпы", "помощь"]):
+        await handle_ultrahelp_keywords(update, context)
     elif lower_text in ["окак", "о как"]:
         await update.message.reply_text("отак", parse_mode="Markdown")
     elif any(keyword in lower_text for keyword in SHOP_KEYWORDS):
@@ -1657,7 +1672,6 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Напиши \"N <число>\" что бы купить N билетиков")
     elif random.randint(1,100)<=2:
         await update.message.reply_text(f"А ты сегодня уже получал Печеньки?")
-
     elif lower_text.startswith("раздача"):
         await handle_random_giveaway(update, context)
 
