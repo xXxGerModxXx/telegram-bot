@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAEbE_cLS5ccaTE3pUhfZCLaAUBu-H4k4q8"
+TOKEN = "7604409638:AAFMljLGgbudKrM_xbhGp_dfpssoPSK7CSA"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -177,19 +177,6 @@ async def handle_update_prices(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text(f"Цены успешно обновлены: {prices_str}")
 lottery_lock = threading.Lock()
 
-def save_lottery(data, allow_empty=False):
-    if not isinstance(data, dict):
-        raise ValueError("save_lottery: данные должны быть словарём.")
-
-    if not allow_empty and (
-        len(data) == 0 or all(rng[1] < rng[0] for rng in data.values())
-    ):
-        logging.warning("Попытка сохранить пустой или невалидный список билетов. Операция отменена.")
-        return
-
-    with lottery_lock:
-        with open(LOTTERY_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2, separators=(',', ': '))
 
 
 
@@ -319,53 +306,57 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
     resources = list(map(int, resources_str.split('/')))
     messages = []
 
+    def try_add_resource(index: int, amount: int, resource_code: str, message_text: str):
+        limit = RESOURCE_LIMITS[resource_code](level)
+        before = resources[index]
+        after = min(before + amount, limit)
+        added = after - before
+        if added > 0:
+            resources[index] = after
+            messages.append(message_text.replace("{count}", str(added)))
+
+    # Золото (index 4)
     if level >= 2:
-        gold_chance = 25 - 5 * level
+        gold_chance = max(0, 25 - 5 * level)
         if random.randint(1, 100) <= gold_chance:
-            resources[4] += 1
-            messages.append(f"Вы получили 1 золото! (Шанс: {gold_chance}%)")
+            try_add_resource(4, 1, "з", f"Вы получили {{count}} золото! (Шанс: {gold_chance}%)")
 
-    iron_chance = 20 + 5 * level
-    iron_count = 0
-
-    while iron_chance >= 100:
-        resources[2] += 1
+    # Железо (index 2)
+    iron_chance_total = 20 + 5 * level
+    full = iron_chance_total // 100
+    remainder = iron_chance_total % 100
+    iron_count = full
+    if random.randint(1, 100) <= remainder:
         iron_count += 1
-        iron_chance -= 100
-
-    # остаток — шанс на дополнительное железо
-    if iron_chance > 0 and random.randint(1, 100) <= iron_chance:
-        resources[2] += 1
-        iron_count += 1
-
     if iron_count > 0:
-        messages.append(f"Вы получили {iron_count} железа! (Общий шанс: {20 + 5 * level}%)")
+        try_add_resource(2, iron_count, "ж", f"Вы получили {{count}} железа! (Шанс: {iron_chance_total}%)")
 
+    # +10 печенек шанс
     if random.randint(1, 100) <= 1:
         user_balances["печеньки"] += 10
         messages.append("Вы получили 10 дополнительных печений! (Шанс: 1%)")
 
-    wheat_chance = 50 - 5 * level
+    # Пшеница (index 1)
+    wheat_chance = max(0, 50 - 5 * level)
     if random.randint(1, 100) <= wheat_chance:
-        resources[1] += 1
-        messages.append(f"Вы получили 1 пшеницу! (Шанс: {wheat_chance}%)")
+        try_add_resource(1, 1, "п", f"Вы получили {{count}} пшеницу! (Шанс: {wheat_chance}%)")
 
+    # Какао-бобы (index 0)
     cocoa_chance = 5
     if random.randint(1, 100) <= cocoa_chance:
-        resources[0] += 1
-        messages.append(f"Вы получили 1 какао-боб! (Шанс: {cocoa_chance}%)")
+        try_add_resource(0, 1, "к", f"Вы получили {{count}} какао-боб! (Шанс: {cocoa_chance}%)")
 
+    # Алмазы (index 3)
     if 2 <= level <= 5:
-        diamond_chance = 30 - 5 * level
+        diamond_chance = max(0, 30 - 5 * level)
         if random.randint(1, 100) <= diamond_chance:
-            resources[3] += 1
-            messages.append(f"Вы получили 1 алмаз! (Шанс: {diamond_chance}%)")
+            try_add_resource(3, 1, "а", f"Вы получили {{count}} алмаз! (Шанс: {diamond_chance}%)")
 
+    # Изумруды (index 5)
     if 1 <= level <= 10:
         emerald_chance = 3
         if random.randint(1, 100) <= emerald_chance:
-            resources[5] += 1
-            messages.append(f"Вы получили 1 изумруд! (Шанс: {emerald_chance}%)")
+            try_add_resource(5, 1, "и", f"Вы получили {{count}} изумруд! (Шанс: {emerald_chance}%)")
 
     user_balances["ресурсы"] = "/".join(map(str, resources))
     user_balances["последний фарм"] = datetime.now().strftime("%H:%M %d-%m-%Y")
@@ -389,6 +380,7 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("\n".join(messages))
     except:
         pass
+
 
 async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -908,6 +900,19 @@ def safe_load_lottery():
                 return json.loads(content)
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
+def save_lottery(data, allow_empty=False):
+    if not isinstance(data, dict):
+        raise ValueError("save_lottery: данные должны быть словарём.")
+
+    if not allow_empty and (
+        len(data) == 0 or all(rng[1] < rng[0] for rng in data.values())
+    ):
+        logging.warning("Попытка сохранить пустой или невалидный список билетов. Операция отменена.")
+        return
+
+    with lottery_lock:
+        with open(LOTTERY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2, separators=(',', ': '))
 
 
 
@@ -1662,17 +1667,17 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Я хороший Котик!", parse_mode="Markdown")
     elif random.randint(1,1000)<=chanse_vezde:
         await update.message.reply_text(f"Ты мне понравился, держи промо: {PROMO}")
-    elif random.randint(1,1000)<=8:
+    elif random.randint(1,1000)<=4:
         await update.message.reply_text(f"А ты любишь Печеньки?")
-    elif random.randint(1,1000)<=8:
+    elif random.randint(1,1000)<=2:
         await update.message.reply_text(f"Напиши \"N <число>\" что бы купить N билетиков")
-    elif random.randint(1,1000)<=8:
+    elif random.randint(1,1000)<=4:
         await update.message.reply_text(f"А ты сегодня уже получал Печеньки?")
     elif lower_text.startswith("раздача"):
         await handle_random_giveaway(update, context)
 
-PROMO = "<промо находится в опиcании ТГК>"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
-chanse_N = 35
+PROMO = "LLpromo"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+chanse_N = 30
 chanse_balance = 0
 chanse_vezde = 3
 commands_common = {
