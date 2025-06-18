@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAH_OptZqGovf2JYpIJCOzDt1ueyS0usAnA"
+TOKEN = "7604409638:AAGkY_U-hMoyruH-7QkrtuumZ22w1xvKT1U"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -135,18 +135,22 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_balances(balances)
 
     # Логируем действие
-    log_transaction({
-        "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-        "type": "повысить уровень",
-        "username": username,
-        "from_level": current_level,
-        "to_level": current_level + 1,
-        "cookies_spent": price,
-        "gold_cookies_spent": required_gold_cookies if current_level >= 10 else 0,
-        "diamonds_spent": required_diamonds if current_level >= 10 else 0
-    })
+    try:
+        log_transaction({
+            "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+            "type": "повысить уровень",
+            "username": username,
+            "from_level": current_level,
+            "to_level": current_level + 1,
+            "cookies_spent": price,
+            "gold_cookies_spent": required_gold_cookies if current_level >= 10 else 0,
+            "diamonds_spent": required_diamonds if current_level >= 10 else 0
+        })
+    except Exception as e:
+        print(f"[ОШИБКА] лог уровня: {e}")
 
-    await update.message.reply_text(f"Поздравляю! Ты повысил уровень до {next_level} и потратил {price} печенек. Давай ещё повысим !")
+    await update.message.reply_text(
+        f"🎉 {username}, ты повысил уровень до {next_level} и потратил {price} 🍪 печенек!\n")
 async def handle_update_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.username != ADMIN_USERNAME:
         await update.message.reply_text("Команда доступна только администратору.")
@@ -1505,11 +1509,19 @@ async def handle_random_giveaway(update: Update, context: ContextTypes.DEFAULT_T
 
     balances = load_balances()
 
-    candidates = [
-        user for user, data in balances.items()
-        if user not in excluded_users_Admin and isinstance(data, dict)
-        and min_level <= data.get("уровень", 1) <= max_level
-    ]
+    # Фильтруем подходящих игроков
+    if min_level == 0 and max_level == 0:
+        # Специальный случай — все уровни
+        candidates = [
+            user for user, data in balances.items()
+            if user not in excluded_users_Admin and isinstance(data, dict)
+        ]
+    else:
+        candidates = [
+            user for user, data in balances.items()
+            if user not in excluded_users_Admin and isinstance(data, dict)
+               and min_level <= data.get("уровень", 1) <= max_level
+        ]
 
     if len(candidates) < player_count:
         await msg.reply_text(f"Недостаточно игроков уровня от {min_level} до {max_level}. Нашли только: {len(candidates)}")
@@ -1605,7 +1617,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_want_cookies(update, context)
         if random.random() < 0.2:
             await maybe_save_admin(update, context)
-    elif lower_text == "повысить уровень" or lower_text == "поднять уровень":
+    elif lower_text == "повысить уровень" or lower_text == "поднять уровень" or lower_text == "Повысить уровень" :
         await handle_level_up(update, context)
         if random.random() < 0.25:
             await maybe_save_admin(update, context)
@@ -1663,10 +1675,10 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"А ты сегодня уже получал Печеньки?")
 
 
-PROMO = "llpromo"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
-chanse_N = 30
-chanse_balance = 0
-chanse_vezde = 3
+PROMO = "uorieuroiqeufafjdklafjlkdjvvmcopuo[oiqlkd;kt43678hh10"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+chanse_N = 10
+chanse_balance = 1
+chanse_vezde = 2
 commands_common = {
     "🆕 обнова": "Показать список обновлений",
     "💰 баланс": "Показать текущий баланс и уровень",
@@ -1826,13 +1838,13 @@ ULTRAHELP_INFO = """🔮 *УльтХелп — Ультемативная Пом
 При использовании его эмодзи Кубик вы автоматически участвуете в его игре *Покер*.
 
 🎳 *УльтХелп: Эмодзи Боулинг*
-👤 Владелец: @nastysh3cka  
+👤 Владелец: nastysh3cka  
 📜 Описание:  
 При использовании её эмодзи Боулинг вы автоматически участвуете в её казино.  
-💸 *Условия казино от @nastysh3cka:*  
+💸 *Условия казино от nastysh3cka:*  
 • Стоимость игры: 3 Печеньки  
 • Приз за страйк: 6 Печенек  
-🎮 Для игры переведите по 3 Печеньки за игру @nastysh3cka командой `дать 3` (с указанием на её сообщение или допишите её тег в конце) и киньте эмодзи боулинг.  
+🎮 Для игры переведите по 3 Печеньки за игру nastysh3cka командой `дать 3` (с указанием на её сообщение или допишите её тег в конце) и киньте эмодзи боулинг.  
 Если вы просто кинете эмодзи Боулинг — вы автоматически соглашаетесь на оплату игры в казино.
 """
 
