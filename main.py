@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAFvCxl9uoGOi8rBorcvxBnbnadg5VVlmMM"
+TOKEN = "7604409638:AAH_OptZqGovf2JYpIJCOzDt1ueyS0usAnA"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -181,7 +181,8 @@ lottery_lock = threading.Lock()
 
 
 import threading
-
+import datetime
+from telegram import Message, Update
 
 
 file_lock = threading.Lock()
@@ -193,19 +194,14 @@ def load_balances():
         with open(BALANCE_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
 
-import random
-import datetime
-from telegram import Message, Update
-
-file_lock1 = threading.Lock()
-
 def save_balances(data):
-    file_lock1.acquire()
-    try:
-        with open(BALANCE_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-    finally:
-        file_lock1.release()
+    with file_lock:
+        try:
+            with open(BALANCE_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[ОШИБКА] save_balances: {e}")
+
 
 
 
@@ -1497,26 +1493,26 @@ async def handle_random_giveaway(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     text = msg.text.strip()
-    match = re.match(r'^раздача\s+(\d+)\s+(\d+)\s+(\d+)', text, re.IGNORECASE)
+    match = re.match(r'^раздача\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)', text, re.IGNORECASE)
     if not match:
-        await msg.reply_text("Формат: раздача <уровень (0 = любой)> <кол-во игроков> <сумма>")
+        await msg.reply_text("Формат: раздача <min_уровень> <max_уровень> <кол-во игроков> <сумма>")
         return
 
-    level_filter = int(match.group(1))
-    player_count = int(match.group(2))
-    amount = int(match.group(3))
+    min_level = int(match.group(1))
+    max_level = int(match.group(2))
+    player_count = int(match.group(3))
+    amount = int(match.group(4))
 
     balances = load_balances()
 
-    # Фильтруем подходящих игроков
     candidates = [
         user for user, data in balances.items()
         if user not in excluded_users_Admin and isinstance(data, dict)
-        and (level_filter == 0 or data.get("уровень", 1) == level_filter)
+        and min_level <= data.get("уровень", 1) <= max_level
     ]
 
     if len(candidates) < player_count:
-        await msg.reply_text(f"Недостаточно игроков уровня {level_filter} для раздачи.")
+        await msg.reply_text(f"Недостаточно игроков уровня от {min_level} до {max_level}. Нашли только: {len(candidates)}")
         return
 
     selected_users = random.sample(candidates, player_count)
@@ -1531,7 +1527,6 @@ async def handle_random_giveaway(update: Update, context: ContextTypes.DEFAULT_T
 
         balances[user]["печеньки"] = balances[user].get("печеньки", 0) + amount
 
-        # Логируем каждую раздачу
         try:
             log_transaction({
                 "timestamp": datetime.now(moscow_tz).isoformat(),
@@ -1546,7 +1541,8 @@ async def handle_random_giveaway(update: Update, context: ContextTypes.DEFAULT_T
 
     save_balances(balances)
     names = ', '.join(selected_users)
-    await msg.reply_text(f"🎉 {amount} 🍪 выданы {player_count} игрокам: {names}")
+    await msg.reply_text(f"🎉 {amount} 🍪 выданы {player_count} игрокам уровня {min_level}–{max_level}: {names}")
+
 
 async def handle_ultrahelp_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1649,6 +1645,14 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(SHOP_INFO, parse_mode="Markdown")
     elif re.search(r'\b(котик|кот|киса|кошак|котя|котёнок)\b', lower_text):
             await update.message.reply_text("Я хороший Котик!", parse_mode="Markdown")
+    elif lower_text.startswith("раздача"):
+        await handle_random_giveaway(update, context)
+
+
+
+
+
+
     elif random.randint(1,1000)<=chanse_vezde:
         await update.message.reply_text(f"Ты мне понравился, держи промо: {PROMO}")
     elif random.randint(1,1000)<=4:
@@ -1657,8 +1661,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Напиши \"N <число>\" что бы купить N билетиков")
     elif random.randint(1,1000)<=4:
         await update.message.reply_text(f"А ты сегодня уже получал Печеньки?")
-    elif lower_text.startswith("раздача"):
-        await handle_random_giveaway(update, context)
+
 
 PROMO = "llpromo"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
 chanse_N = 30
