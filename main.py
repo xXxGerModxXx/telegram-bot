@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAGkY_U-hMoyruH-7QkrtuumZ22w1xvKT1U"
+TOKEN = "7604409638:AAHyWAE_ctzkH5CrB-Ll_zJYUiHd4TZDEm4"
 BALANCE_FILE = 'balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -189,23 +189,24 @@ import datetime
 from telegram import Message, Update
 
 
-file_lock = threading.Lock()
+import firebase_admin
+from firebase_admin import credentials, firestore
 
+# Инициализация (один раз)
+cred = credentials.Certificate("firebase-key.json")
+firebase_admin.initialize_app(cred)
+db = firestore.client()
+balances_ref = db.collection("balances")
+
+# Загрузить все балансы
 def load_balances():
-    with file_lock:
-        if not os.path.exists(BALANCE_FILE):
-            return {}
-        with open(BALANCE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+    docs = balances_ref.stream()
+    return {doc.id: doc.to_dict() for doc in docs}
 
-def save_balances(data):
-    with file_lock:
-        try:
-            with open(BALANCE_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"[ОШИБКА] save_balances: {e}")
-
+# Сохранить все балансы
+def save_balances(data: dict):
+    for username, fields in data.items():
+        balances_ref.document(username).set(fields)
 
 
 
