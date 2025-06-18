@@ -79,8 +79,10 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Ты уже достиг максимального уровня!")
         return
 
-    doc = db.collection("levels_price").document("data").get()
-    levels_price = doc.to_dict() if doc.exists else {}
+    levels_price = {}
+    docs = db.collection("levels_price").stream()
+    for doc in docs:
+        levels_price[doc.id] = doc.to_dict().get("price")
 
     next_level = str(current_level + 1)
     price = levels_price.get(next_level)
@@ -694,6 +696,15 @@ async def handle_commands_not_admin(update: Update, context: ContextTypes.DEFAUL
     filtered_commands = {cmd: desc for cmd, desc in commands_common.items() if "(админ)" not in desc}
     lines = ["Тебе красавчик доступное следующее:"]
     for cmd, desc in filtered_commands.items():
+        lines.append(f"{cmd} — {desc}")
+    await update.message.reply_text("\n".join(lines))
+async def handle_commands_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = get_username_from_message(update.message)
+    if username != f"@{ADMIN_USERNAME}":
+        return  # Молчим, если не админ
+
+    lines = ["📋 Полный список команд (включая админские):"]
+    for cmd, desc in commands_common.items():
         lines.append(f"{cmd} — {desc}")
     await update.message.reply_text("\n".join(lines))
 
@@ -1536,6 +1547,20 @@ async def handle_ultrahelp_keywords(update: Update, context: ContextTypes.DEFAUL
 
     if any(keyword in text for keyword in keywords):
         await update.message.reply_text(ULTRAHELP_INFO, parse_mode="Markdown")
+async def handle_set_promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global PROMO
+    username = get_username_from_message(update.message)
+
+    if username != f"@{ADMIN_USERNAME}":
+        return  # Молчим, если не админ
+
+    args = update.message.text.strip().split(maxsplit=1)
+    if len(args) < 2:
+        await update.message.reply_text("Укажи текст промо. Пример: `промо Печеньки всем`")
+        return
+
+    PROMO = args[1].strip()
+    await update.message.reply_text(f"✅ Промо обновлено: {PROMO}")
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -1592,6 +1617,8 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_commands(update, context)
     elif lower_text == "команды":
         await handle_commands_not_admin(update, context)
+    elif lower_text == "команды все":
+        await handle_commands_all(update, context)
     elif lower_text == "топ" or lower_text == "топчик":
         await handle_top(update, context)
     elif lower_text == "уровень":
@@ -1614,7 +1641,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_craft(update, context)
     elif lower_text == "ресурсы":
         await handle_resources_info(update, context)
-    elif any(k in lower_text for k in ["казино", "эмодзи", "ультхелп", "ультхелпы", "помощь"]):
+    elif any(k in lower_text for k in ["казино", "эмодзи", "ультхелп", "ультхелпы"]):
         await handle_ultrahelp_keywords(update, context)
     elif lower_text in ["окак", "о как"]:
         await update.message.reply_text("отак", parse_mode="Markdown")
@@ -1624,6 +1651,8 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Я хороший Котик!", parse_mode="Markdown")
     elif lower_text.startswith("раздача"):
         await handle_random_giveaway(update, context)
+    elif lower_text.startswith("промо"):
+        await handle_set_promo(update, context)
 
 
 
@@ -1697,8 +1726,11 @@ UPDATE_LOG = """
 
 
 async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    doc = db.collection("levels_price").document("data").get()
-    prices = doc.to_dict() if doc.exists else {}
+    # Загружаем все цены уровней — каждый уровень это отдельный документ
+    prices = {}
+    docs = db.collection("levels_price").stream()
+    for doc in docs:
+        prices[doc.id] = doc.to_dict().get("price", "неизвестно")
 
     lines = [
         "📊 *Уровни*",
