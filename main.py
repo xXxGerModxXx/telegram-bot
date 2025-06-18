@@ -27,8 +27,8 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAEsaZ0dmQn4-S3GcZlhoPGCSBeaqeAWQ4s"
-BALANCE_FILE = 'balances.json'
+TOKEN = "7604409638:AAG-_YR3oPa4zCVV9z5ZfZITgoFH0by-3JE"
+BALANCE_FILE = 'обновление/balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
 # ... дальше твой код
@@ -40,7 +40,7 @@ CURRENCIES = {
     "трилистники": "☘️",
     "четырёхлистники": "🍀"
 }
-LOTTERY_FILE = 'lottery.json'
+LOTTERY_FILE = 'обновление/lottery.json'
 # Flask-заглушка
 flask_app = Flask(__name__)
 
@@ -60,7 +60,7 @@ def start_bot():
     app.run_polling()
 
 
-LEVELS_PRICE_FILE = 'levels_price.json'
+LEVELS_PRICE_FILE = 'обновление/levels_price.json'
 
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 
@@ -157,7 +157,6 @@ async def handle_update_prices(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     text = update.message.text.strip()
-    # Ожидаем формат: "новые цены 10/10/10/10/10/10/10/10/10"
     parts = text.split(maxsplit=2)
     if len(parts) < 3:
         await update.message.reply_text("Неверный формат. Используйте: новые цены 10/10/10/10/10/10/10/10/10")
@@ -176,9 +175,10 @@ async def handle_update_prices(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     new_prices = {str(level): price for level, price in zip(range(2, 11), prices)}
-    save_levels_price(new_prices)
+    db.collection("levels_price").document("data").set(new_prices)
 
     await update.message.reply_text(f"Цены успешно обновлены: {prices_str}")
+
 lottery_lock = threading.Lock()
 
 
@@ -243,7 +243,7 @@ async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append(f"{amount} {curr} {emoji}")
 
     # 🎟 Добавим количество билетов из лотереи
-    lottery = safe_load_lottery()
+    lottery = load_lottery_firestore()
     ticket_range = lottery.get(username)
     if ticket_range and isinstance(ticket_range, list) and len(ticket_range) == 2:
         ticket_count = ticket_range[1] - ticket_range[0] + 1
@@ -593,72 +593,37 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-
-    if msg.from_user and msg.from_user.username != ADMIN_USERNAME:
+    if get_username_from_message(update.message) != f"@{ADMIN_USERNAME}":
         return
 
-    admin_chat_id = 844673891  # твой id в Telegram
+    admin_chat_id = 844673891
 
     try:
-        # Отправляем содержимое BALANCE_FILE
-        with open(BALANCE_FILE, 'r', encoding='utf-8') as f:
-            balance_content = f.read()
+        balances = load_balances()
+        balance_content = json.dumps(balances, ensure_ascii=False, indent=2)
 
-        if len(balance_content) <= 4000:
-            await context.bot.send_message(
-                chat_id=admin_chat_id,
-                text=f"📂 *Содержимое {BALANCE_FILE}*\n```json\n{balance_content}\n```",
-                parse_mode="Markdown"
-            )
-        else:
-            await context.bot.send_document(
-                chat_id=admin_chat_id,
-                document=open(BALANCE_FILE, 'rb')
-            )
+        levels_doc = db.collection("levels_price").document("data").get()
+        levels_content = json.dumps(levels_doc.to_dict(), ensure_ascii=False, indent=2) if levels_doc.exists else "{}"
 
-        # Отправляем содержимое levels_price.json
-        with open('levels_price.json', 'r', encoding='utf-8') as f:
-            levels_content = f.read()
+        lottery = load_lottery_firestore()
+        lottery_content = json.dumps(lottery, ensure_ascii=False, indent=2)
 
-        if len(levels_content) <= 4000:
-            await context.bot.send_message(
-                chat_id=admin_chat_id,
-                text=f"📊 *Цены уровней (levels_price.json)*\n```json\n{levels_content}\n```",
-                parse_mode="Markdown"
-            )
-        else:
-            await context.bot.send_document(
-                chat_id=admin_chat_id,
-                document=open('levels_price.json', 'rb')
-            )
-
-        # Теперь отправляем содержимое лотереи (с безопасной загрузкой)
-        lottery = safe_load_lottery()
-        if not lottery:
-            await context.bot.send_message(chat_id=admin_chat_id, text="🎟️ Файл с билетами пуст.")
-        else:
-            json_text = json.dumps(lottery, ensure_ascii=False, indent=2, separators=(',', ': '))
-
-
-            if len(json_text) <= 4000:
+        for title, content in [("Баланс", balance_content), ("Цены уровней", levels_content), ("Лотерея", lottery_content)]:
+            if len(content) <= 4000:
                 await context.bot.send_message(
                     chat_id=admin_chat_id,
-                    text=f"🎟️ *Содержимое лотереи*\n```json\n{json_text}\n```",
+                    text=f"📂 *{title}*\n```json\n{content}\n```",
                     parse_mode="Markdown"
                 )
             else:
-                temp_path = "lottery.json"
+                temp_path = f"{title}.json"
                 with open(temp_path, "w", encoding="utf-8") as f:
-                    f.write(json_text)
+                    f.write(content)
                 await context.bot.send_document(chat_id=admin_chat_id, document=open(temp_path, "rb"))
                 os.remove(temp_path)
 
     except Exception as e:
-        await context.bot.send_message(
-            chat_id=admin_chat_id,
-            text=f"❌ Ошибка при чтении файлов: {e}"
-        )
+        await context.bot.send_message(chat_id=admin_chat_id, text=f"❌ Ошибка: {e}")
 
 
 
@@ -668,8 +633,12 @@ async def handle_clear_lottery(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("Эта команда только для админа.")
         return
 
-    save_lottery({}, allow_empty=True)
-    await update.message.reply_text("Билеты очищены.")
+    docs = db.collection("lottery").stream()
+    for doc in docs:
+        db.collection("lottery").document(doc.id).delete()
+
+    await update.message.reply_text("🎟️ Все билеты лотереи очищены.")
+
 
 
 async def handle_average_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -891,30 +860,14 @@ async def handle_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
-def safe_load_lottery():
-    with lottery_lock:
-        try:
-            with open(LOTTERY_FILE, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                if not content:
-                    return {}
-                return json.loads(content)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
-def save_lottery(data, allow_empty=False):
-    if not isinstance(data, dict):
-        raise ValueError("save_lottery: данные должны быть словарём.")
+def load_lottery_firestore():
+    docs = db.collection("lottery").stream()
+    return {doc.id: doc.to_dict().get("номера", []) for doc in docs}
 
-    if not allow_empty and (
-        len(data) == 0 or all(rng[1] < rng[0] for rng in data.values())
-    ):
-        logging.warning("Попытка сохранить пустой или невалидный список билетов. Операция отменена.")
-        return
-
-    with lottery_lock:
-        with open(LOTTERY_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2, separators=(',', ': '))
-
+def save_lottery_firestore(data: dict):
+    lottery_ref = db.collection("lottery")
+    for user, ticket_range in data.items():
+        lottery_ref.document(user).set({"номера": ticket_range})
 
 
 
@@ -948,7 +901,7 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     save_balances(balances)
 
     # Загрузка текущих билетов
-    lottery = safe_load_lottery()
+    lottery = load_lottery_firestore()
     ordered = list(lottery.items())
 
     # Найдём текущего пользователя и его количество билетов
@@ -975,7 +928,9 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
         current_number = new_range[1] + 1
 
     updated_lottery = {user: rng for user, rng in ordered}
-    save_lottery(updated_lottery)
+    save_lottery_firestore(updated_lottery)
+
+
 
     try:
         log_transaction({
@@ -1011,7 +966,7 @@ async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Эта команда доступна только админу.")
         return
 
-    lottery =safe_load_lottery()
+    lottery =load_lottery_firestore()
     if not lottery:
         await update.message.reply_text("Файл с билетами пуст.")
         return
@@ -1020,7 +975,7 @@ async def handle_show_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
     if len(json_text) > 4000:
-        temp_path = "lottery.json"
+        temp_path = "обновление/lottery.json"
         with open(temp_path, "w", encoding="utf-8") as f:
             f.write(json_text)
 
@@ -1733,11 +1688,8 @@ UPDATE_LOG = """
 
 
 async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        with open("levels_price.json", "r", encoding="utf-8") as f:
-            prices = json.load(f)
-    except FileNotFoundError:
-        prices = {}
+    doc = db.collection("levels_price").document("data").get()
+    prices = doc.to_dict() if doc.exists else {}
 
     lines = [
         "📊 *Уровни*",
@@ -1754,7 +1706,7 @@ async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("\n📉 *Откуп от поражения*")
     lines.append("Доступен при достижении нужного уровня. Цена — в 2 раза ниже.\n")
     lines.append("*Формат:* `(Ступень — Этап) : Уровень`")
-    lines.append("""
+    lines.append("""\n
 📌 *Подготовительный Этап*
 - 1 ст. : 2 ур
 - 2 ст. : 4 ур
@@ -1768,9 +1720,8 @@ async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 - Финал : 🚫 откуп недоступен
 """)
 
-
-
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
 level_config = {
     1: (0, 2, [0.49, 0.5, 0.01]),
     2: (0, 2, [0.19, 0.8, 0.01]),
