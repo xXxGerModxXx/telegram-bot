@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAG-_YR3oPa4zCVV9z5ZfZITgoFH0by-3JE"
+TOKEN = "7604409638:AAFNCMgH9zsQofOGhowdiHaqnV21O8TSDbo"
 BALANCE_FILE = 'обновление/balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -65,39 +65,25 @@ LEVELS_PRICE_FILE = 'обновление/levels_price.json'
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 
 
-def load_levels_price():
-    if not os.path.exists(LEVELS_PRICE_FILE):
-        # Если файла нет — создадим дефолтные цены (10 для каждого уровня с 2 по 10)
-        default_prices = {str(i): 10 for i in range(2, 11)}
-        save_levels_price(default_prices)
-        return default_prices
-    with open(LEVELS_PRICE_FILE, 'r', encoding='utf-8') as f:
-        return json.load(f)
-
-
-
-
-def save_levels_price(data):
-    with open(LEVELS_PRICE_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
 async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
     balances = load_balances()
     user_balances = balances.get(username)
 
     if user_balances is None:
-        await update.message.reply_text("В твоём мешочке с Печеньками кажется не достаточно :(.")
+        await update.message.reply_text("Ты ещё не начал приключение. Получи сначала печеньки!")
         return
 
     current_level = user_balances.get("уровень", 1)
     if current_level >= 20:
-        await update.message.reply_text("Ты и так слишком крут!")
+        await update.message.reply_text("Ты уже достиг максимального уровня!")
         return
 
-    levels_price = load_levels_price()
+    doc = db.collection("levels_price").document("data").get()
+    levels_price = doc.to_dict() if doc.exists else {}
+
     next_level = str(current_level + 1)
     price = levels_price.get(next_level)
-
     if price is None:
         await update.message.reply_text("Не могу определить цену повышения уровня.")
         return
@@ -114,27 +100,29 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if current_level >= 10:
         if resources[gold_cookies_index] < required_gold_cookies:
-            await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {required_gold_cookies} золотых Печенек, так что иди и найди их мне")
+            await update.message.reply_text(
+                f"❗ Для повышения до {next_level} уровня нужно {required_gold_cookies} золотых печенек.")
             return
         if resources[diamonds_index] < required_diamonds:
-            await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {required_diamonds} алмазов, так что иди и найди их мне")
+            await update.message.reply_text(
+                f"❗ Для повышения до {next_level} уровня нужно {required_diamonds} алмазов.")
             return
 
     if current_cookies < price:
-        await update.message.reply_text(f"Для повышения до уровня {next_level} нужно {price} печенек, так что иди и найди их мне")
+        await update.message.reply_text(
+            f"❗ Для повышения до {next_level} уровня нужно {price} 🍪 печенек.")
         return
 
-    # Отнимаем ресурсы и повышаем уровень
     user_balances["печеньки"] = current_cookies - price
     if current_level >= 10:
         resources[gold_cookies_index] -= required_gold_cookies
         resources[diamonds_index] -= required_diamonds
+
     user_balances["уровень"] = current_level + 1
     user_balances["ресурсы"] = "/".join(map(str, resources))
     balances[username] = user_balances
     save_balances(balances)
 
-    # Логируем действие
     try:
         log_transaction({
             "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
@@ -143,14 +131,35 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "from_level": current_level,
             "to_level": current_level + 1,
             "cookies_spent": price,
-            "gold_cookies_spent": required_gold_cookies if current_level >= 10 else 0,
-            "diamonds_spent": required_diamonds if current_level >= 10 else 0
+            "gold_cookies_spent": required_gold_cookies,
+            "diamonds_spent": required_diamonds
         })
     except Exception as e:
-        print(f"[ОШИБКА] лог уровня: {e}")
+        print(f"[Лог ошибка] Уровень: {e}")
 
     await update.message.reply_text(
-        f"🎉 {username}, ты повысил уровень до {next_level} и потратил {price} 🍪 печенек!\n")
+        f"🎉 {username}, ты повысил уровень до {next_level}!\n"
+        f"Ты потратил {price} 🍪 печенек"
+        + (f", {required_gold_cookies} золотых печенек и {required_diamonds} алмазов!" if current_level >= 10 else "!")
+    )
+
+
+def load_levels_price():
+    if not os.path.exists(LEVELS_PRICE_FILE):
+        # Если файла нет — создадим дефолтные цены (10 для каждого уровня с 2 по 10)
+        default_prices = {str(i): 10 for i in range(2, 11)}
+        save_levels_price(default_prices)
+        return default_prices
+    with open(LEVELS_PRICE_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+
+
+def save_levels_price(data):
+    with open(LEVELS_PRICE_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
 async def handle_update_prices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.username != ADMIN_USERNAME:
         await update.message.reply_text("Команда доступна только администратору.")
