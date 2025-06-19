@@ -1564,7 +1564,6 @@ async def debug_log_text(text: str, context: ContextTypes.DEFAULT_TYPE):
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
-    await debug_log_text(f"[MAIN] от {update.message.from_user.username} — {update.message.text}", context)
 
     text = update.message.text.strip()
     lower_text = text.lower()
