@@ -74,13 +74,11 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Ты уже достиг максимального уровня!")
         return
 
+    # ✅ Загрузка всех документов с ценами
     levels_price = {}
-    levels_doc = db.collection("levels_price").document("data").get()
-    if not levels_doc.exists:
-        await update.message.reply_text("Не найдены цены уровней.")
-        return
-
-    levels_price = levels_doc.to_dict()
+    docs = db.collection("levels_price").stream()
+    for doc in docs:
+        levels_price[doc.id] = doc.to_dict().get("цена")
 
     next_level = str(current_level + 1)
     price = levels_price.get(next_level)
@@ -1738,11 +1736,11 @@ UPDATE_LOG = """
 
 
 async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Загружаем все цены уровней из документа "data"
+    # Загружаем все цены уровней из отдельных документов
     prices = {}
-    doc = db.collection("levels_price").document("data").get()
-    if doc.exists:
-        prices = doc.to_dict()
+    docs = db.collection("levels_price").stream()
+    for doc in docs:
+        prices[doc.id] = doc.to_dict().get("цена")
 
     lines = [
         "📊 *Уровни*",
