@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAFyAfA8nL6lfncMs-sxrytZxAAEO_7pFtc"
+TOKEN = "7604409638:AAGJ6u1iV5Y_oSfxBS7PqknK2WOLF7bsXfM"
 BALANCE_FILE = 'обновление/balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -392,7 +392,7 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     text = msg.text.strip()
-    await debug_log(f"[GIVE] вызван для {msg.from_user.username} — {msg.text}", update, context)
+    await debug_log_text(f"[MAIN] от {update.message.from_user.username} — {update.message.text}", context)
 
     match = re.match(r'^дать\s+(\d+)(?:\s+(печеньки|трилистника|трилистники|четырёхлистника|четырёхлистники))?\b', text, re.IGNORECASE)
     if not match:
@@ -1557,26 +1557,15 @@ async def handle_set_promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     PROMO = args[1].strip()
     await update.message.reply_text(f"✅ Промо обновлено: {PROMO}")
-async def debug_log(text: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    fake_user = User(id=844673891, first_name="Admin", is_bot=False, username=ADMIN_USERNAME)
-    fake_chat = Chat(id=844673891, type="private")
-    fake_message = Message(
-        message_id=0,
-        date=update.message.date,
-        chat=fake_chat,
-        from_user=fake_user,
-        text=text
-    )
-    fake_update = Update(update_id=0, message=fake_message)
-    await handle_save_admin(fake_update, context)
+async def debug_log_text(text: str, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(chat_id=844673891, text=text)
+
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
-    await debug_log(
-        f"[MAIN] сообщение: {update.message.message_id} от {update.message.from_user.username} — {update.message.text}",
-        update, context
-    )
+    await debug_log_text(f"[MAIN] от {update.message.from_user.username} — {update.message.text}", context)
+
     text = update.message.text.strip()
     lower_text = text.lower()
     username = get_username_from_message(update.message)
