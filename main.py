@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAHMZtF1tFeismgCnMK669S9wJgjIkFshdE"
+TOKEN = "7604409638:AAE9EH1gQOeQBTJtYw49n8nqLeVcGBEkyAI"
 BALANCE_FILE = 'обновление/balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -52,12 +52,7 @@ def start_dummy_server():
     flask_app.run(host="0.0.0.0", port=10000)
 
 # === Запуск бота ===
-def start_bot():
 
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))
-    print("Бот запущен...")
-    app.run_polling()
 
 
 LEVELS_PRICE_FILE = 'обновление/levels_price.json'
