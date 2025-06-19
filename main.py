@@ -75,9 +75,12 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     levels_price = {}
-    docs = db.collection("levels_price").stream()
-    for doc in docs:
-        levels_price[doc.id] = doc.to_dict().get("price")
+    levels_doc = db.collection("levels_price").document("data").get()
+    if not levels_doc.exists:
+        await update.message.reply_text("Не найдены цены уровней.")
+        return
+
+    levels_price = levels_doc.to_dict()
 
     next_level = str(current_level + 1)
     price = levels_price.get(next_level)
@@ -392,7 +395,17 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     text = msg.text.strip()
-    await debug_log_text(f"[MAIN] от {update.message.from_user.username} — {update.message.text}", context)
+    recipient_tag = None
+    recipient_match = re.search(r'@(\w+)', text)
+    if recipient_match:
+        recipient_tag = recipient_match.group(1)
+    elif msg.reply_to_message and msg.reply_to_message.from_user.username:
+        recipient_tag = msg.reply_to_message.from_user.username
+
+    await debug_log_text(
+        f"[GIVE] от {msg.from_user.username} даёт {text} → {recipient_tag or '❓неизвестно'}",
+        context
+    )
 
     match = re.match(r'^дать\s+(\d+)(?:\s+(печеньки|трилистника|трилистники|четырёхлистника|четырёхлистники))?\b', text, re.IGNORECASE)
     if not match:
@@ -1725,11 +1738,11 @@ UPDATE_LOG = """
 
 
 async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Загружаем все цены уровней — каждый уровень это отдельный документ
+    # Загружаем все цены уровней из документа "data"
     prices = {}
-    docs = db.collection("levels_price").stream()
-    for doc in docs:
-        prices[doc.id] = doc.to_dict().get("price", "неизвестно")
+    doc = db.collection("levels_price").document("data").get()
+    if doc.exists:
+        prices = doc.to_dict()
 
     lines = [
         "📊 *Уровни*",
@@ -1740,7 +1753,10 @@ async def handle_level_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for level in range(1, 21):
         min_amt, max_amt, chances = level_config[level]
         chance_str = "/".join(f"{round(p * 100)}" for p in chances)
-        price = prices.get(str(level), "🚫" if level == 1 else "неизвестно")
+        if level == 1:
+            price = "🚫"
+        else:
+            price = prices.get(str(level), "неизвестно")
         lines.append(f"*{level} ур*: {min_amt}–{max_amt} 🍪 в день | шанс: {chance_str}% | цена: {price}")
 
     lines.append("\n📉 *Откуп от поражения*")
