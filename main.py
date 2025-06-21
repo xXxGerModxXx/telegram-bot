@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAErMn2j4LnGr82A6_UHyWyUuEL8McwNS78"
+TOKEN = "7604409638:AAEtJseKTdLi2fUDN4763tiunXs-5uakDig"
 BALANCE_FILE = 'обновление/balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -817,18 +817,18 @@ async def handle_commands_all(update: Update, context: ContextTypes.DEFAULT_TYPE
         lines.append(f"{cmd} — {desc}")
     await update.message.reply_text("\n".join(lines))
 
-def get_cookies_by_level(level: int) -> int:
-    # Определяем диапазон и веса вероятностей по уровню
-    # Формат: (min, max, [вес1, вес2, ...])
-
-    cfg = level_config.get(level, (0, 1, [0.5, 0.5]))  # дефолт для уровней > 10 или <1
+def get_cookies_by_level(level: int, user_balances: dict) -> int:
+    fortune_level = user_balances.get("навыки", {}).get("Фортуна", 0)
+    cfg = level_config.get(level, (0, 1, [0.5, 0.5]))
     min_val, max_val, weights = cfg
-
-    # Формируем список вариантов
     values = list(range(min_val, max_val + 1))
-
-    # Выбираем с учётом весов
     cookies = random.choices(values, weights=weights, k=1)[0]
+
+    if fortune_level > 0:
+        chance = 3 * fortune_level
+        if random.randint(1, 100) <= chance:
+            cookies *= 2
+
     return cookies
 
 excluded_users = {"@hto_i_taki", "@Shittttt", "@zZardexe", "@insanemaloy"}  # админы
@@ -1730,6 +1730,32 @@ async def handle_set_promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def debug_log_text(text: str, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=844673891, text=text)
 
+SKILL_DESCRIPTIONS = {
+    "Золотые Руки": "Из 2 пшеницы, 1 какао и 1 золота создаёт 2 золотые печеньки с шансом (10*уровень)%",
+    "Железный Голем": "+10% шанса на железо за каждый уровень. При 150% даёт 100% и 50% шанс дополнительно",
+    "Бесконечное Печенье": "Ежедневно даёт (1*уровень) печеньку",
+    "Лудоман": "Сбор печенек колеблется от -(2*уровень)% до +(2*уровень)%",
+    "Золотоискатель": "Обмен (30 - уровень) железа на 1 золото",
+    "Великий Дар": "Из ресурсов делает изумруд. Расходы уменьшаются с уровнем",
+    "Великий Шахтёр": "+1 железо в день с шансом (20*уровень)%",
+    "Пекарь": "(10*уровень)% шанс получить +1 печеньку при крафте",
+    "Ювелир": "(10*уровень)% шанс не потратить ресурс при крафте золотой печеньки",
+    "Дар природы": "+(15*уровень)% шанс на пшеницу при фарме",
+    "Глаз Алмаз": "+(1*уровень)% шанс на алмаз при фарме",
+    "Селянин": "Обмен 1 изумруда на (уровень//3) золота и (10+уровень) железа (раз в день)",
+    "Фарм-маньяк": "(10+уровень*5)% шанс доп. ресурса при фарме",
+    "Экономист": "Крафт обычных печенек требует меньше пшеницы",
+    "Стратег": "Снижает стоимость Печенек на (5*уровень)%",
+    "Удачливый": "Шанс (уровень//5+2)% получить (уровень//5+1) изумруд при фарме",
+    "Илон Маск": "При крафте 3+ золотых печенек получает (3*уровень) обычных в подарок",
+    "вечный фарм": "Доп. фарм с шансом (1*уровень)% в день",
+    "Торговец": "Продаёт ресурсы в печеньки. Цены зависят от уровня",
+    "Копатель": "+(уровень//2+1) железа при фарме, если ресурсов более (10*уровень)",
+    "Фортуна": "С шансом (3*уровень)% удваивает награду за фарм",
+    "Разрушитель": "Удаляет (1*уровень) железа у других (1 раз в день)",
+    "Алхимик": "(5*уровень)% шанс улучшить ресурс (ж→п→а→и) 1 раз в день"
+}
+
 async def handle_skill_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
     balances = load_balances()
@@ -1743,13 +1769,13 @@ async def handle_skill_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("У тебя ещё нет навыков. Получи их через команду 'получить навык'")
         return
 
-    lines = ["🎓 Твои навыки:"]
+    lines = ["🎓 Твои навыки:\n"]
     for name, lvl in skills.items():
         max_lvl = SKILLS.get(name, 10)
-        lines.append(f"• {name} — {lvl}/{max_lvl}")
+        desc = SKILL_DESCRIPTIONS.get(name, "(Описание недоступно)")
+        lines.append(f"• {name} — {lvl}/{max_lvl}\n  🔹 {desc}")
 
-    lines.append("")
-    lines.append("🛠 Доступные команды:")
+    lines.append("\n🛠 Доступные команды:")
     lines.append("• получить навык")
     lines.append("• прокачать навык")
     lines.append("• использовать навык")
@@ -1828,7 +1854,7 @@ SKILLS = {
     "Разрушитель": 10,
     "Алхимик": 10
 }
-async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYPE, skill_name: str):
     username = get_username_from_message(update.message)
     balances = load_balances()
     user = balances.get(username)
@@ -1838,22 +1864,19 @@ async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     skills = user.get("навыки", {})
-    if not skills:
-        await update.message.reply_text("У тебя пока нет ни одного навыка для прокачки.")
+    if skill_name not in skills:
+        await update.message.reply_text(f"У тебя нет навыка с названием \"{skill_name}\".")
         return
 
-    # Получаем первый навык для примера — можно расширить выбор навыка позже
-    skill_name, level = next(iter(skills.items()))
+    level = skills[skill_name]
     max_level = SKILLS.get(skill_name, 10)
 
-    # Проверка максимального уровня навыка
     if level >= max_level:
         await update.message.reply_text(
             f"Навык {skill_name} уже прокачан до максимального уровня ({max_level})."
         )
         return
 
-    # Проверка ограничения по уровню игрока
     player_level = user.get("уровень", 1)
     if level >= player_level:
         await update.message.reply_text(
@@ -1864,12 +1887,10 @@ async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYP
     resources = list(map(int, user.get("ресурсы", "0/0/0/0/0/0/0").split("/")))
     cookies = user.get("печеньки", 0)
 
-    # Рассчет стоимости
     cost_iron = 5 * level
     cost_cookies = 10
     cost_diamonds = 10 if (level + 1) % 10 == 0 else (5 if (level + 1) % 5 == 0 else 0)
 
-    # Проверка наличия ресурсов
     if resources[2] < cost_iron or cookies < cost_cookies or resources[3] < cost_diamonds:
         await update.message.reply_text(
             f"Недостаточно ресурсов:\n"
@@ -1879,15 +1900,12 @@ async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         return
 
-    # Списываем ресурсы
     resources[2] -= cost_iron
     resources[3] -= cost_diamonds
     cookies -= cost_cookies
 
-    # Повышаем уровень навыка
     skills[skill_name] += 1
 
-    # Сохраняем всё
     user["ресурсы"] = "/".join(map(str, resources))
     user["печеньки"] = cookies
     balances[username] = user
@@ -1897,25 +1915,39 @@ async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYP
         f"Навык {skill_name} прокачан до уровня {skills[skill_name]}!"
     )
 
+
 import random
 from datetime import datetime
 
-async def use_skill_logic(username, skill_name, skill_level, user_balances):
-    messages = []
+async def use_skill_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = get_username_from_message(update.message)
 
+    balances = load_balances()
+    user_balances = balances.get(username)
+
+    if user_balances is None:
+        await update.message.reply_text("Вы не зарегистрированы.")
+        return
+
+    skill_name = ...  # Тут нужно извлечь из текста сообщения
+    skill_level = user_balances.get("навыки", {}).get(skill_name, 0)
+
+    # Теперь работаем с user_balances прямо в этой функции
     if skill_level <= 0:
-        messages.append(f"Навык {skill_name} не прокачан.")
-        return "\n".join(messages)
+        await update.message.reply_text(f"Навык '{skill_name}' не прокачан.")
+        return
 
-    # Разберём ресурсы пользователя
+    # Далее идёт логика конкретного навыка
+
+
+    # ----- Теперь идёт основная логика проверки ресурсов -----
     resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
-    resources = list(map(int, resources_str.split('/')))
-    # Индексы ресурсов: 0 - какао, 1 - пшеница, 2 - железо, 3 - алмазы, 4 - золото, 5 - изумруды, 6 - печеньки (предположим)
+    resources = list(map(int, resources_str.split("/")))
 
     def save_resources():
         user_balances["ресурсы"] = "/".join(map(str, resources))
 
-    def check_resources(reqs: dict):
+    def check_resources(reqs: dict) -> bool:
         res_codes = {"к": 0, "п": 1, "ж": 2, "а": 3, "з": 4, "и": 5}
         for rcode, amount in reqs.items():
             if resources[res_codes[rcode]] < amount:
@@ -1928,6 +1960,7 @@ async def use_skill_logic(username, skill_name, skill_level, user_balances):
             resources[res_codes[rcode]] -= amount
 
     # --- Начинаем логику навыков ---
+    messages = []
 
     if skill_name == "Золотые Руки":
         effective_level = min(skill_level, 10)
@@ -2175,8 +2208,14 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_skill_info(update, context)
     elif lower_text == "получить навык":
         await handle_get_skill(update, context)
-    elif lower_text == "прокачать навык":
-        await handle_upgrade_skill(update, context)
+    elif lower_text.startswith("прокачать навык"):
+        parts = lower_text.split(" ", 2)
+        if len(parts) < 3:
+            await update.message.reply_text("Укажи название навыка после команды. Например:\nпрокачать навык Пекарь")
+        else:
+            skill_name = parts[2].strip()
+            await handle_upgrade_skill(update, context, skill_name)
+
     elif lower_text == "использовать навык" or lower_text == "юзануть навык" or lower_text == "юз навык" or lower_text == "юз навыка":
         await use_skill_logic(update, context)
 
@@ -2224,8 +2263,8 @@ commands_common = {
     "🆘 УльтХелп": "Информация о УльтХелпах Игроков",
     "🛍️ магазин": "Показать, что можно купить за печеньки, ресурсы",
     "📖 навык": "Показать список доступных навыков и их уровни",
-    "✨ использовать навык": "Активировать выбранный навык",
-    "📈 прокачать навык": "Повысить уровень выбранного навыка",
+    "✨ использовать навык <название>": "Активировать выбранный навык",
+    "📈 прокачать навык <название>": "Повысить уровень указанного навыка",
     "🎓 получить навык": "Получить новый навык (если доступно)"
 }
 
@@ -2339,7 +2378,7 @@ SHOP_INFO = """🛍️ *Добро пожаловать в Магазин Печ
 💰 Цена: *300 печенек*
 💎 Бонус-предложение:  
 Продам *1 ☘️* первому желающему — *всего за 2 изумруда*!
-📩 Для покупки пишите *Админу* — @hto_i_taki (Ягами)
+📩 Для покупки пишите *Админу* (Ягами)
 """
 
 ULTRAHELP_INFO = """🔮 *УльтХелп — Ультемативная Помощь от Создателя*
