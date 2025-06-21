@@ -1749,7 +1749,7 @@ async def handle_skill_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         effective_lvl = min(lvl, max_lvl)
 
         # Стандартное описание
-        desc = SKILL_DESCRIPTIONS.get(name, "(Описание недоступно)")
+        desc = "Описание не доступно"
 
         # Индивидуальные вставки по вычисляемым значениям
         if name == "Золотые Руки":
