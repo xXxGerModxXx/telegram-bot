@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAGJ6u1iV5Y_oSfxBS7PqknK2WOLF7bsXfM"
+TOKEN = "7604409638:AAErMn2j4LnGr82A6_UHyWyUuEL8McwNS78"
 BALANCE_FILE = 'обновление/balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -86,6 +86,11 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Не могу определить цену повышения уровня.")
         return
 
+    # Навык "Стратег" — скидка на цену печенек
+    strategy_level = user_balances.get("навыки", {}).get("Стратег", 0)
+    discount_percent = min(strategy_level * 5, 50)  # максимум 50%
+    discounted_price = int(price * (100 - discount_percent) / 100)
+
     current_cookies = user_balances.get("печеньки", 0)
     resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
     resources = list(map(int, resources_str.split('/')))
@@ -106,12 +111,12 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"❗ Для повышения до {next_level} уровня нужно {required_diamonds} алмазов.")
             return
 
-    if current_cookies < price:
+    if current_cookies < discounted_price:
         await update.message.reply_text(
-            f"❗ Для повышения до {next_level} уровня нужно {price} 🍪 печенек.")
+            f"❗ Для повышения до {next_level} уровня нужно {discounted_price} 🍪 печенек (с учётом скидки Стратега).")
         return
 
-    user_balances["печеньки"] = current_cookies - price
+    user_balances["печеньки"] = current_cookies - discounted_price
     if current_level >= 10:
         resources[gold_cookies_index] -= required_gold_cookies
         resources[diamonds_index] -= required_diamonds
@@ -128,7 +133,7 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "username": username,
             "from_level": current_level,
             "to_level": current_level + 1,
-            "cookies_spent": price,
+            "cookies_spent": discounted_price,
             "gold_cookies_spent": required_gold_cookies,
             "diamonds_spent": required_diamonds
         })
@@ -137,7 +142,7 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"🎉 {username}, ты повысил уровень до {next_level}!\n"
-        f"Ты потратил {price} 🍪 печенек"
+        f"Ты потратил {discounted_price} 🍪 печенек"
         + (f", {required_gold_cookies} золотых печенек и {required_diamonds} алмазов!" if current_level >= 10 else "!")
     )
 
@@ -323,6 +328,90 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
             resources[index] = after
             messages.append(message_text.replace("{count}", str(added)))
 
+    # === Пассивный навык "Железный Голем" ===
+    level_iron_golem = user_balances.get("навыки", {}).get("Железный Голем", 0)
+    if level_iron_golem > 0:
+        extra_chance = level_iron_golem * 10  # +10% за уровень
+        iron_bonus = extra_chance // 100
+        iron_remainder = extra_chance % 100
+        # Гарантированные железки
+        if iron_bonus > 0:
+            try_add_resource(2, iron_bonus, "ж",
+                             f"💪 Железный Голем сработал! +{iron_bonus} железа.")
+        # Вероятностная железка
+        if random.randint(1, 100) <= iron_remainder:
+            try_add_resource(2, 1, "ж",
+                             f"💪 Железный Голем сработал! +1 железо.")
+    # === Пассивный навык "Бесконечное Печенье" ===
+    level_infinite_cookies = user_balances.get("навыки", {}).get("Бесконечное Печенье", 0)
+    if level_infinite_cookies > 0:
+        guaranteed_cookies = min(level_infinite_cookies, 10)  # максимум 10 печенек
+        user_balances["печеньки"] = user_balances.get("печеньки", 0) + guaranteed_cookies
+        messages.append(f"🍪 Навык 'Бесконечное Печенье' подарил тебе {guaranteed_cookies} печенек!")
+
+    # Получаем уровень навыка "Лудоман"
+    level_ludoman = user_balances.get("навыки", {}).get("Лудоман", 0)
+    # Базовое количество печенек по уровню
+    cookies = get_cookies_by_level(level)
+    if level_ludoman > 0:
+        # Рассчитываем процент колебания
+        fluctuation_percent = 2 * level_ludoman
+        # Считаем случайный множитель от (100 - fluctuation_percent) до (100 + fluctuation_percent) процентов
+        min_multiplier = 100 - fluctuation_percent
+        max_multiplier = 100 + fluctuation_percent
+        multiplier = random.randint(min_multiplier, max_multiplier) / 100
+        # Корректируем количество печенек
+        cookies = int(cookies * multiplier)
+    user_balances["печеньки"] = user_balances.get("печеньки", 0) + cookies
+
+    # Дар природы — шанс на пшеницу с переполнением
+    level_nature_gift = user_balances.get("навыки", {}).get("Дар природы", 0)
+    if level_nature_gift > 0:
+        chance = 15 * level_nature_gift
+        guaranteed = chance // 100
+        remainder = chance % 100
+
+        # Добавляем гарантированные пшеницы
+        if guaranteed > 0:
+            try_add_resource(1, guaranteed, "п", f"🌿 Дар природы сработал! +{guaranteed} пшениц.")
+
+        # Вероятностное добавление
+        if random.randint(1, 100) <= remainder:
+            try_add_resource(1, 1, "п", f"🌿 Дар природы сработал! +1 пшеница.")
+
+    level_eye_diamond = user_balances.get("навыки", {}).get("Глаз Алмаз", 0)
+    if level_eye_diamond > 0:
+        chance = level_eye_diamond  # 1% * уровень
+        if random.randint(1, 100) <= chance:
+            try_add_resource(3, 1, "а", f"💎 Глаз Алмаз сработал! +1 алмаз.")
+
+    level_infinite_cookies = user_balances.get("навыки", {}).get("Бесконечное Печенье", 0)
+    if level_infinite_cookies > 0:
+        guaranteed_cookies = min(level_infinite_cookies, 10)  # максимум 10 печенек
+        user_balances["печеньки"] = user_balances.get("печеньки", 0) + guaranteed_cookies
+        messages.append(f"🍪 Навык 'Бесконечное Печенье' подарил тебе {guaranteed_cookies} печенек!")
+
+    # Получаем уровень навыка "Фарм-маньяк"
+    level_farm_maniac = user_balances.get("навыки", {}).get("Фарм-маньяк", 0)
+    if level_farm_maniac > 0:
+        chance = 10 + level_farm_maniac * 5
+        # Исключаем изумруды (index 5)
+        possible_resources = [0, 1, 2, 3, 4]  # какао, пшеница, железо, алмазы, золото
+        if random.randint(1, 100) <= chance:
+            res_index = random.choice(possible_resources)
+            resource_code = list(RESOURCES.keys())[res_index]
+            try_add_resource(res_index, 1, resource_code,
+                             f"🔥 Фарм-маньяк сработал! +1 {RESOURCES[resource_code]}. (Шанс: {chance}%)")
+
+    # Внутри async def handle_want_cookies(...):
+
+    level_lucky = user_balances.get("навыки", {}).get("Удачливый", 0)
+    if level_lucky > 0:
+        chance = (level_lucky // 5) + 2  # процент шанса
+        amount = (level_lucky // 5) + 1  # количество изумрудов
+        if random.randint(1, 100) <= chance:
+            try_add_resource(5, amount, "и", f"🍀 Навык 'Удачливый' сработал! +{amount} изумруда(ов).")
+
     # Золото (index 4)
     if level >= 2:
         gold_chance = max(0, 25 - 5 * level)
@@ -342,7 +431,7 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
     # +10 печенек шанс
     if random.randint(1, 100) <= 1:
         user_balances["печеньки"] += 10
-        messages.append("Вы получили 10 дополнительных печений! (Шанс: 1%)")
+        messages.append("Вы получили 10 дополнительных печенек  ! (Шанс: 1%)")
 
     # Пшеница (index 1)
     wheat_chance = max(0, 50 - 5 * level)
@@ -367,7 +456,15 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
             try_add_resource(5, 1, "и", f"Вы получили {{count}} изумруд! (Шанс: {emerald_chance}%)")
 
     user_balances["ресурсы"] = "/".join(map(str, resources))
-    user_balances["последний фарм"] = datetime.now().strftime("%H:%M %d-%m-%Y")
+    level_eternal_farm = user_balances.get("навыки", {}).get("Вечный Фарм", 0)
+    chance_eternal = min(level_eternal_farm, 20)  # макс 20%
+    if level_eternal_farm > 0 and random.randint(1, 100) <= chance_eternal:
+        # Навык сработал — фарм доступен дополнительно, дату не меняем
+        messages.append(f"✨ Навык 'Вечный Фарм' сработал! Вы можете фармить ещё раз сегодня.")
+    else:
+        # Навык не сработал — фиксируем дату последнего фарма
+        user_balances["последний фарм"] = datetime.now().strftime("%H:%M %d-%m-%Y")
+
     balances[username] = user_balances
     save_balances(balances)
 
@@ -617,15 +714,20 @@ async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_chat_id = 844673891
 
     try:
+        # Загружаем балансы
         balances = load_balances()
         balance_content = json.dumps(balances, ensure_ascii=False, indent=2)
 
-        levels_doc = db.collection("levels_price").document("data").get()
-        levels_content = json.dumps(levels_doc.to_dict(), ensure_ascii=False, indent=2) if levels_doc.exists else "{}"
+        # Загружаем все уровни из коллекции levels_price (каждый уровень — отдельный документ)
+        levels_collection = db.collection("levels_price").stream()
+        levels_dict = {doc.id: doc.to_dict().get("цена") for doc in levels_collection}
+        levels_content = json.dumps(levels_dict, ensure_ascii=False, indent=2)
 
+        # Загружаем лотерею
         lottery = load_lottery_firestore()
         lottery_content = json.dumps(lottery, ensure_ascii=False, indent=2)
 
+        # Перебираем данные и отправляем админу — либо как текст, либо файлом
         for title, content in [("Баланс", balance_content), ("Цены уровней", levels_content), ("Лотерея", lottery_content)]:
             if len(content) <= 4000:
                 await context.bot.send_message(
@@ -1342,8 +1444,24 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if craft_type == "печенька":
+        econ_level = user_balances.get("навыки", {}).get("Экономист", 0)
+        level = user_balances.get("уровень", 1)
+
         required_wheat = 2 * amount
         required_cocoa = 1 * amount
+
+        if econ_level > 0:
+            if 2 <= level < 5:
+                required_wheat = max(0, required_wheat - 1 * amount)
+            elif 5 <= level < 10:
+                required_wheat = max(0, required_wheat - 2 * amount)
+            elif level >= 10:
+                required_wheat = 0  # не тратим пшеницу
+                bonus_cookies = 2 * amount
+            else:
+                bonus_cookies = 0
+        else:
+            bonus_cookies = 0
 
         if resources[wheat_index] < required_wheat or resources[cocoa_index] < required_cocoa:
             await msg.reply_text(f"Не хватает ресурсов для крафта {amount} обычных печенек.")
@@ -1351,7 +1469,19 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         resources[wheat_index] -= required_wheat
         resources[cocoa_index] -= required_cocoa
-        resources[cookie_index] += amount
+
+        # Навык "Пекарь"
+        skill_level = user_balances.get("навыки", {}).get("Пекарь", 0)
+        baked_cookies = amount + bonus_cookies
+        if skill_level > 0:
+            chance = 10 * skill_level  # %
+            extra_bonus = 0
+            for _ in range(amount):
+                if random.randint(1, 100) <= chance:
+                    extra_bonus += 1
+            baked_cookies += extra_bonus
+
+        resources[cookie_index] += baked_cookies
 
         try:
             log_transaction({
@@ -1359,30 +1489,53 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "type": "крафт",
                 "username": username,
                 "resource": "печенька",
-                "amount": amount
+                "amount": baked_cookies
             })
         except:
             pass
 
-        await msg.reply_text(f"Вы скрафтили {amount} обычных печенек.")
+        await msg.reply_text(
+            f"Вы скрафтили {baked_cookies} обычных печенек (включая бонус {bonus_cookies} от навыка 'Пекарь').")
 
-    elif craft_type == "золотая печенька":
+    if craft_type == "золотая печенька":
+
         required_wheat = 2 * amount
         required_cocoa = 1 * amount
         required_cookies = 1 * amount
 
         if (
-            resources[wheat_index] < required_wheat or
-            resources[cocoa_index] < required_cocoa or
-            resources[cookie_index] < required_cookies
+                resources[wheat_index] < required_wheat or
+                resources[cocoa_index] < required_cocoa or
+                resources[cookie_index] < required_cookies
         ):
             await msg.reply_text(f"Не хватает ресурсов для крафта {amount} золотых печенек.")
             return
 
-        resources[wheat_index] -= required_wheat
-        resources[cocoa_index] -= required_cocoa
-        resources[cookie_index] -= required_cookies
+        skill_level = user_balances.get("навыки", {}).get("Ювелир", 0)
+        chance = 10 * skill_level  # %
+
+        def deduct_with_chance(total_needed, resource_index):
+            spent = 0
+            for _ in range(total_needed):
+                if skill_level > 0 and random.randint(1, 100) <= chance:
+                    # Ресурс не потратился
+                    continue
+                resources[resource_index] -= 1
+                spent += 1
+            return spent
+
+        spent_wheat = deduct_with_chance(required_wheat, wheat_index)
+        spent_cocoa = deduct_with_chance(required_cocoa, cocoa_index)
+        spent_cookies = deduct_with_chance(required_cookies, cookie_index)
         resources[gold_cookie_index] += amount
+
+        # === Навык "Илон Маск" ===
+        level_ilon_musk = user_balances.get("навыки", {}).get("Илон Маск", 0)
+        if level_ilon_musk > 0 and amount >= 3:
+            bonus_cookies = 3 * level_ilon_musk
+            resources[cookie_index] += bonus_cookies
+            await msg.reply_text(
+                f"🚀 Навык 'Илон Маск' сработал! Вы получили дополнительно {bonus_cookies} обычных печенек.")
 
         try:
             log_transaction({
@@ -1395,7 +1548,13 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-        await msg.reply_text(f"Вы скрафтили {amount} золотых печенек.")
+        await msg.reply_text(
+            f"Вы скрафтили {amount} золотых печенек! "
+            f"Потрачено: пшеницы {spent_wheat}, какао-бобов {spent_cocoa}, печенек {spent_cookies} "
+            f"(навык 'Ювелир' сработал с шансом {chance}%)"
+        )
+
+
 
     else:
         await msg.reply_text("Неизвестный тип. Пример: крафт 1 печенька / крафт 1 золотая печенька")
@@ -1571,6 +1730,355 @@ async def handle_set_promo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def debug_log_text(text: str, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=844673891, text=text)
 
+async def handle_skill_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = get_username_from_message(update.message)
+    balances = load_balances()
+    user = balances.get(username)
+    if not user:
+        await update.message.reply_text("Сначала начни приключение!")
+        return
+
+    skills = user.get("навыки", {})
+    if not skills:
+        await update.message.reply_text("У тебя ещё нет навыков. Получи их через команду 'получить навык'")
+        return
+
+    lines = ["🎓 Твои навыки:"]
+    for name, lvl in skills.items():
+        max_lvl = SKILLS.get(name, 10)
+        lines.append(f"• {name} — {lvl}/{max_lvl}")
+
+    lines.append("")
+    lines.append("🛠 Доступные команды:")
+    lines.append("• получить навык")
+    lines.append("• прокачать навык")
+    lines.append("• использовать навык")
+
+    await update.message.reply_text("\n".join(lines))
+
+async def handle_get_skill(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = get_username_from_message(update.message)
+    balances = load_balances()
+    user = balances.get(username)
+
+    if not user:
+        await update.message.reply_text("Ты ещё не начал игру. Сначала начни приключение!")
+        return
+
+    # ресурсы — строка вида "печенье/трилистники/железо/золото/бронза/изумруды/что-то_ещё"
+    resources = list(map(int, user.get("ресурсы", "0/0/0/0/0/0/0").split("/")))
+    skills = user.setdefault("навыки", {})
+
+    # Проверка, если уже получены все навыки
+    if len(skills) >= len(SKILLS):
+        await update.message.reply_text("У тебя уже есть все доступные навыки!")
+        return
+
+    # Логика стоимости
+    if len(skills) == 0:
+        # Нет навыков — требуются 5 железа
+        if resources[2] < 5:
+            await update.message.reply_text("Нужно 5 железа для получения первого навыка.")
+            return
+        resources[2] -= 5
+    else:
+        # Есть хотя бы один навык — требуются 5 изумрудов
+        if resources[5] < 5:
+            await update.message.reply_text("Нужно 5 изумрудов для следующего навыка.")
+            return
+        resources[5] -= 5
+
+    # Случайный выбор нового навыка
+    available_skills = [s for s in SKILLS if s not in skills]
+    new_skill = random.choice(available_skills)
+    skills[new_skill] = 1
+
+    # Сохраняем обновлённый баланс
+    user["ресурсы"] = "/".join(map(str, resources))
+    balances[username] = user
+    save_balances(balances)
+
+    await update.message.reply_text(f"Ты получил навык: {new_skill} (ур. 1)")
+
+
+SKILLS = {
+    "Золотые Руки": 10,
+    "Железный Голем": 20,
+    "Бесконечное Печенье": 10,
+    "Лудоман": 10,
+    "Золотоискатель": 10,
+    "Великий Дар": 10,
+    "Великий Шахтёр": 20,
+    "Пекарь": 10,
+    "Ювелир": 10,
+    "Дар природы": 20,
+    "Глаз Алмаз": 20,
+    "Селянин": 20,
+    "Переработчик": 20,
+    "Фарм-маньяк": 10,
+    "Экономист": 10,
+    "Стратег": 10,
+    "Удачливый": 10,
+    "Илон Маск": 10,
+    "Изобретатель": 10,
+    "Второе дыхание": 20,
+    "Торговец": 10,
+    "Копатель": 10,
+    "Фортуна": 10,
+    "Разрушитель": 10,
+    "Алхимик": 10
+}
+async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = get_username_from_message(update.message)
+    balances = load_balances()
+    user = balances.get(username)
+
+    if not user:
+        await update.message.reply_text("Ты ещё не начал игру.")
+        return
+
+    skills = user.get("навыки", {})
+    if not skills:
+        await update.message.reply_text("У тебя пока нет ни одного навыка для прокачки.")
+        return
+
+    # Получаем первый навык для примера — можно расширить выбор навыка позже
+    skill_name, level = next(iter(skills.items()))
+    max_level = SKILLS.get(skill_name, 10)
+
+    # Проверка максимального уровня навыка
+    if level >= max_level:
+        await update.message.reply_text(
+            f"Навык {skill_name} уже прокачан до максимального уровня ({max_level})."
+        )
+        return
+
+    # Проверка ограничения по уровню игрока
+    player_level = user.get("уровень", 1)
+    if level >= player_level:
+        await update.message.reply_text(
+            f"Нельзя повысить навык {skill_name} выше твоего уровня ({player_level})."
+        )
+        return
+
+    resources = list(map(int, user.get("ресурсы", "0/0/0/0/0/0/0").split("/")))
+    cookies = user.get("печеньки", 0)
+
+    # Рассчет стоимости
+    cost_iron = 5 * level
+    cost_cookies = 10
+    cost_diamonds = 10 if (level + 1) % 10 == 0 else (5 if (level + 1) % 5 == 0 else 0)
+
+    # Проверка наличия ресурсов
+    if resources[2] < cost_iron or cookies < cost_cookies or resources[3] < cost_diamonds:
+        await update.message.reply_text(
+            f"Недостаточно ресурсов:\n"
+            f"- Нужно {cost_iron} железа\n"
+            f"- Нужно {cost_cookies} печенек\n"
+            f"- Нужно {cost_diamonds} алмазов\n"
+        )
+        return
+
+    # Списываем ресурсы
+    resources[2] -= cost_iron
+    resources[3] -= cost_diamonds
+    cookies -= cost_cookies
+
+    # Повышаем уровень навыка
+    skills[skill_name] += 1
+
+    # Сохраняем всё
+    user["ресурсы"] = "/".join(map(str, resources))
+    user["печеньки"] = cookies
+    balances[username] = user
+    save_balances(balances)
+
+    await update.message.reply_text(
+        f"Навык {skill_name} прокачан до уровня {skills[skill_name]}!"
+    )
+
+import random
+from datetime import datetime
+
+async def use_skill_logic(username, skill_name, skill_level, user_balances):
+    messages = []
+
+    if skill_level <= 0:
+        messages.append(f"Навык {skill_name} не прокачан.")
+        return "\n".join(messages)
+
+    # Разберём ресурсы пользователя
+    resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
+    resources = list(map(int, resources_str.split('/')))
+    # Индексы ресурсов: 0 - какао, 1 - пшеница, 2 - железо, 3 - алмазы, 4 - золото, 5 - изумруды, 6 - печеньки (предположим)
+
+    def save_resources():
+        user_balances["ресурсы"] = "/".join(map(str, resources))
+
+    def check_resources(reqs: dict):
+        res_codes = {"к": 0, "п": 1, "ж": 2, "а": 3, "з": 4, "и": 5}
+        for rcode, amount in reqs.items():
+            if resources[res_codes[rcode]] < amount:
+                return False
+        return True
+
+    def deduct_resources(reqs: dict):
+        res_codes = {"к": 0, "п": 1, "ж": 2, "а": 3, "з": 4, "и": 5}
+        for rcode, amount in reqs.items():
+            resources[res_codes[rcode]] -= amount
+
+    # --- Начинаем логику навыков ---
+
+    if skill_name == "Золотые Руки":
+        effective_level = min(skill_level, 10)
+        reqs = {"п": 2, "к": 1, "з": 1}
+        if check_resources(reqs):
+            deduct_resources(reqs)
+            chance = 10 * effective_level
+            if random.randint(1, 100) <= chance:
+                resources[6] += 2
+                messages.append(f"✨ Навык '{skill_name}' сработал! Ты получил 2 золотых печеньки.")
+            else:
+                resources[6] += 1
+                messages.append(f"Навык '{skill_name}' не сработал полностью, но ты получил 1 золотую печеньку.")
+        else:
+            messages.append("Недостаточно ресурсов для навыка 'Золотые Руки'. Нужно: 2 пшеницы, 1 какао-боб, 1 золото.")
+
+    elif skill_name == "Железный Голем":
+        messages.append("Навык 'Железный Голем' пассивный и не требует использования.")
+
+    elif skill_name == "Бесконечное Печенье":
+        last_bonus = user_balances.get("бесконечное_печенье_дата", "")
+        today_str = datetime.now().strftime("%d-%m-%Y")
+        if last_bonus != today_str:
+            user_balances["печеньки"] = user_balances.get("печеньки", 0) + skill_level
+            user_balances["бесконечное_печенье_дата"] = today_str
+            messages.append(f"Навык 'Бесконечное Печенье' активирован! Вам начислено {skill_level} печенек.")
+        else:
+            messages.append("Вы уже получили бонус от навыка 'Бесконечное Печенье' сегодня.")
+
+    elif skill_name == "Лудоман":
+        current_cookies = user_balances.get("печеньки", 0)
+        max_change = int(current_cookies * 0.02 * skill_level)
+        if max_change == 0:
+            max_change = skill_level
+        change = random.randint(-max_change, max_change)
+        user_balances["печеньки"] = max(0, current_cookies + change)
+        messages.append(f"Навык 'Лудоман' сработал! Баланс печенек изменился на {change:+}.")
+
+    elif skill_name == "Золотоискатель":
+        cost = 30 - skill_level
+        if resources[2] >= cost:
+            resources[2] -= cost
+            resources[4] += 1
+            messages.append(f"Навык 'Золотоискатель' активирован! Вы обменяли {cost} железа на 1 золото.")
+        else:
+            messages.append(f"Недостаточно железа для обмена. Нужно {cost} железа.")
+
+    elif skill_name == "Великий Дар":
+        reqs = {"ж": 50 - skill_level, "з": 20 - skill_level, "а": 10, "п": 10, "к": 10}
+        if check_resources(reqs):
+            deduct_resources(reqs)
+            resources[5] += 1
+            messages.append("Навык 'Великий Дар' активирован! Вы создали 1 изумруд.")
+        else:
+            messages.append("Недостаточно ресурсов для 'Великого Дара'. Требуется много ресурсов.")
+
+    elif skill_name == "Великий Шахтёр":
+        chance = 20 * skill_level
+        guaranteed = chance // 100
+        remainder = chance % 100
+        iron_gained = guaranteed
+        if random.randint(1, 100) <= remainder:
+            iron_gained += 1
+        if iron_gained > 0:
+            resources[2] += iron_gained
+            messages.append(f"Навык 'Великий Шахтёр' сработал! Вы получили {iron_gained} железа.")
+        else:
+            messages.append("Навык 'Великий Шахтёр' не сработал.")
+
+    elif skill_name == "Пекарь":
+        messages.append("Навык 'Пекарь' — пассивный. Шанс получить +1 печеньку при крафте.")
+
+    elif skill_name == "Ювелир":
+        messages.append("Навык 'Ювелир' — пассивный. Шанс не потратить ресурс при крафте золотой печеньки.")
+
+    elif skill_name == "Дар природы":
+        messages.append("Навык 'Дар природы' — пассивный. Увеличивает шанс на пшеницу при фарме.")
+
+    elif skill_name == "Глаз Алмаз":
+        messages.append("Навык 'Глаз Алмаз' — пассивный. Увеличивает шанс на алмаз при фарме.")
+
+    elif skill_name == "Селянин":
+        emerald_index = 5
+        gold_index = 4
+        iron_index = 2
+        if resources[emerald_index] >= 1:
+            resources[emerald_index] -= 1
+            gold_amount = skill_level // 3
+            iron_amount = 10 + skill_level
+            # Предположим RESOURCE_LIMITS - словарь с функциями лимитов
+            def get_limit(code):
+                return RESOURCE_LIMITS[code](user_balances.get("уровень", 1))
+            gold_limit = get_limit("з")
+            iron_limit = get_limit("ж")
+            resources[gold_index] = min(resources[gold_index] + gold_amount, gold_limit)
+            resources[iron_index] = min(resources[iron_index] + iron_amount, iron_limit)
+            messages.append(f"Навык 'Селянин' сработал! Ты обменял 1 изумруд на {gold_amount} золота и {iron_amount} железа.")
+        else:
+            messages.append("Недостаточно изумрудов для обмена.")
+
+    elif skill_name == "Фортуна":
+        messages.append("Навык 'Фортуна' — пассивный. Удваивает награду за фарм с шансом (3*уровень)%.")
+
+    elif skill_name == "Удачливый":
+        messages.append("Навык 'Удачливый' — пассивный. Увеличивает шанс получить изумруд при фарме.")
+
+    elif skill_name == "Илон Маск":
+        messages.append("Навык 'Илон Маск' — пассивный. Даёт бонусные обычные печеньки при крафте золотых.")
+
+    elif skill_name == "Изобретатель":
+        messages.append("Навык 'Изобретатель' — пассивный. Есть шанс создать новый случайный ресурс при крафте.")
+
+    elif skill_name == "вечный фарм":
+        messages.append("Навык 'вечный фарм' — пассивный. Позволяет второй фарм с шансом.")
+
+    elif skill_name == "Торговец":
+        prices = {
+            1: {"п": (10, 10), "к": (5, 10), "ж": (20, 10), "з": (10, 10), "а": (2, 10), "и": (2, 10)},
+            2: {"п": (9, 10), "к": (5, 11), "ж": (18, 11), "з": (9, 11), "а": (2, 11), "и": (2, 11)},
+            3: {"п": (8, 11), "к": (5, 12), "ж": (17, 12), "з": (8, 12), "а": (2, 12), "и": (2, 12)},
+            4: {"п": (7, 12), "к": (4, 12), "ж": (15, 12), "з": (7, 12), "а": (2, 13), "и": (2, 13)},
+            5: {"п": (7, 13), "к": (4, 13), "ж": (14, 13), "з": (7, 13), "а": (2, 13), "и": (2, 13)},
+            6: {"п": (6, 13), "к": (4, 14), "ж": (13, 14), "з": (6, 14), "а": (2, 14), "и": (2, 14)},
+            7: {"п": (6, 14), "к": (4, 14), "ж": (12, 14), "з": (6, 14), "а": (2, 15), "и": (2, 15)},
+            8: {"п": (5, 15), "к": (3, 15), "ж": (11, 15), "з": (5, 15), "а": (2, 15), "и": (2, 15)},
+            9: {"п": (5, 15), "к": (3, 16), "ж": (10, 16), "з": (5, 16), "а": (2, 16), "и": (2, 16)},
+            10: {"п": (4, 16), "к": (3, 16), "ж": (10, 16), "з": (4, 16), "а": (2, 17), "и": (2, 17)},
+        }
+        lvl = min(skill_level, 10)
+        current_prices = prices.get(lvl, prices[10])
+        res_codes = {"к": 0, "п": 1, "ж": 2, "а": 3, "з": 4, "и": 5}
+        affordable_resources = []
+        for res, (req_amount, cookie_amount) in current_prices.items():
+            res_index = res_codes[res]
+            if resources[res_index] >= req_amount:
+                affordable_resources.append((res, req_amount, cookie_amount))
+        if affordable_resources:
+            res, req_amount, cookie_amount = random.choice(affordable_resources)
+            res_index = res_codes[res]
+            resources[res_index] -= req_amount
+            user_balances["печеньки"] = user_balances.get("печеньки", 0) + cookie_amount
+            messages.append(f"Навык 'Торговец' активирован! Продано {req_amount} {res} за {cookie_amount} печенек.")
+        else:
+            messages.append("Недостаточно ресурсов для продажи через 'Торговца'.")
+
+    else:
+        messages.append(f"Навык '{skill_name}' пока не реализован.")
+
+    save_resources()
+    return "\n".join(messages)
+
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -1663,6 +2171,14 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_random_giveaway(update, context)
     elif lower_text.startswith("промо"):
         await handle_set_promo(update, context)
+    elif lower_text == "навык":
+        await handle_skill_info(update, context)
+    elif lower_text == "получить навык":
+        await handle_get_skill(update, context)
+    elif lower_text == "прокачать навык":
+        await handle_upgrade_skill(update, context)
+    elif lower_text == "использовать навык" or lower_text == "юзануть навык" or lower_text == "юз навык" or lower_text == "юз навыка":
+        await use_skill_logic(update, context)
 
 
 
@@ -1679,7 +2195,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"А ты сегодня уже получал Печеньки?")
 
 
-PROMO = "uorieuroiqeufafjdklafjlkdjvvmcopuo[oiqlkd;kt43678hh10"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+PROMO = "germodlove"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
 chanse_N = 10
 chanse_balance = 1
 chanse_vezde = 2
@@ -1706,7 +2222,11 @@ commands_common = {
     "⚒️ крафт <количество> <печенек|золотых печенек>": "Скрафтить указанное количество обычных или золотых печенек",
     "🌾 ресурсы": "Описание всех ресурсов, их шансов выпадения и формул",
     "🆘 УльтХелп": "Информация о УльтХелпах Игроков",
-    "🛍️ магазин": "Показать, что можно купить за печеньки, ресурсы"
+    "🛍️ магазин": "Показать, что можно купить за печеньки, ресурсы",
+    "📖 навык": "Показать список доступных навыков и их уровни",
+    "✨ использовать навык": "Активировать выбранный навык",
+    "📈 прокачать навык": "Повысить уровень выбранного навыка",
+    "🎓 получить навык": "Получить новый навык (если доступно)"
 }
 
 UPDATE_LOG = """
@@ -1819,7 +2339,7 @@ SHOP_INFO = """🛍️ *Добро пожаловать в Магазин Печ
 💰 Цена: *300 печенек*
 💎 Бонус-предложение:  
 Продам *1 ☘️* первому желающему — *всего за 2 изумруда*!
-📩 Для покупки пишите *Адину* — `@hto_i_taki` (Ягами)
+📩 Для покупки пишите *Админу* — @hto_i_taki (Ягами)
 """
 
 ULTRAHELP_INFO = """🔮 *УльтХелп — Ультемативная Помощь от Создателя*
