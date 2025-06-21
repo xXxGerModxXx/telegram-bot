@@ -1854,6 +1854,8 @@ async def handle_skill_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("• получить навык")
     lines.append("• прокачать навык <название>")
     lines.append("• использовать навык <название>")
+    lines.append(
+        "💡 Стоимость прокачки навыка: 5 × текущий уровень железа + 10 печенек ")
 
     await update.message.reply_text("\n".join(lines))
 
@@ -1938,30 +1940,41 @@ async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("Ты ещё не начал игру.")
         return
 
+    # Приводим название к нижнему регистру для сопоставления
+    skill_name_input = skill_name.strip().lower()
+
+    # Получаем список навыков игрока, приводим к lowercase для проверки
     skills = user.get("навыки", {})
-    if skill_name not in skills:
+
+    # Создаём соответствие "нижний_регистр_названия" → "оригинальное название"
+    normalized_skills = {k.lower(): k for k in skills}
+
+    if skill_name_input not in normalized_skills:
         await update.message.reply_text(f"У тебя нет навыка с названием \"{skill_name}\".")
         return
 
-    level = skills[skill_name]
-    max_level = SKILLS.get(skill_name, 10)
+    # Используем оригинальное название для отображения, но работаем с нормализованным ключом
+    original_name = normalized_skills[skill_name_input]
+    level = skills[original_name]
+    max_level = SKILLS.get(original_name, 10)
 
     if level >= max_level:
         await update.message.reply_text(
-            f"Навык {skill_name} уже прокачан до максимального уровня ({max_level})."
+            f"Навык {original_name} уже прокачан до максимального уровня ({max_level})."
         )
         return
 
     player_level = user.get("уровень", 1)
     if level >= player_level:
         await update.message.reply_text(
-            f"Нельзя повысить навык {skill_name} выше твоего уровня ({player_level})."
+            f"Нельзя повысить навык {original_name} выше твоего уровня ({player_level})."
         )
         return
 
     resources = list(map(int, user.get("ресурсы", "0/0/0/0/0/0/0").split("/")))
     cookies = user.get("печеньки", 0)
 
+    # Стоимость прокачки
     cost_iron = 5 * level
     cost_cookies = 10
     cost_diamonds = 10 if (level + 1) % 10 == 0 else (5 if (level + 1) % 5 == 0 else 0)
@@ -1971,23 +1984,24 @@ async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYP
             f"Недостаточно ресурсов:\n"
             f"- Нужно {cost_iron} железа\n"
             f"- Нужно {cost_cookies} печенек\n"
-            f"- Нужно {cost_diamonds} алмазов\n"
+            f"- Нужно {cost_diamonds} алмазов"
         )
         return
 
+    # Списание ресурсов
     resources[2] -= cost_iron
     resources[3] -= cost_diamonds
     cookies -= cost_cookies
 
-    skills[skill_name] += 1
-
+    # Прокачка
+    skills[original_name] += 1
     user["ресурсы"] = "/".join(map(str, resources))
     user["печеньки"] = cookies
     balances[username] = user
     save_balances(balances)
 
     await update.message.reply_text(
-        f"Навык {skill_name} прокачан до уровня {skills[skill_name]}!"
+        f"Навык {original_name} успешно прокачан до уровня {skills[original_name]}!"
     )
 
 
@@ -1996,7 +2010,6 @@ from datetime import datetime
 
 async def use_skill_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
-
     balances = load_balances()
     user_balances = balances.get(username)
 
@@ -2004,18 +2017,22 @@ async def use_skill_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Вы не зарегистрированы.")
         return
 
-    skill_name = ...  # Тут нужно извлечь из текста сообщения
-    skill_level = user_balances.get("навыки", {}).get(skill_name, 0)
+    text = update.message.text.strip().lower()
+    parts = text.split(" ", 2)
 
-    # Теперь работаем с user_balances прямо в этой функции
-    if skill_level <= 0:
-        await update.message.reply_text(f"Навык '{skill_name}' не прокачан.")
+    if len(parts) < 3:
+        await update.message.reply_text("Укажи название навыка: например, использовать навык Золотые Руки")
         return
 
-    # Далее идёт логика конкретного навыка
+    skill_name = parts[2].strip().title()  # Делает 'золотые руки' → 'Золотые Руки'
+    skills = user_balances.get("навыки", {})
+    skill_level = skills.get(skill_name, 0)
 
+    if skill_level <= 0:
+        await update.message.reply_text(f"Навык '{skill_name}' не прокачан или не получен.")
+        return
 
-    # ----- Теперь идёт основная логика проверки ресурсов -----
+    messages = []
     resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
     resources = list(map(int, resources_str.split("/")))
 
@@ -2034,7 +2051,7 @@ async def use_skill_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for rcode, amount in reqs.items():
             resources[res_codes[rcode]] -= amount
 
-    # --- Начинаем логику навыков ---
+    # ====== ПРИМЕРЫ НАВЫКОВ ======
     messages = []
 
     if skill_name == "Золотые Руки":
