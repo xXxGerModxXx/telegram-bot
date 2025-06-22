@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAGeakW8PCvYHeIfGchweRUTUmUkxcxZspE"
+TOKEN = "7604409638:AAFFmuzBa--9xWGuRpaiYb78TgZut6GfPeo"
 BALANCE_FILE = 'обновление/balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -305,6 +305,7 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_balances.update({"ресурсы": "0/0/0/0/0/0/0"})
         user_balances.update({"последний фарм": ""})
         balances[username] = user_balances
+        save_balances(balances)
 
     last_farm_str = user_balances.get("последний фарм", "")
     if not can_farm_today(last_farm_str):
@@ -326,7 +327,8 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
             messages.append(message_text.replace("{count}", str(added)))
 
     # === Расчёт печенек с учётом навыка "Лудоман" ===
-    cookies = get_cookies_by_level(level)
+    cookies = get_cookies_by_level(level, user_balances)
+
     level_ludoman = user_balances.get("навыки", {}).get("Лудоман", 0)
     if level_ludoman > 0:
         fluctuation_percent = 2 * level_ludoman
