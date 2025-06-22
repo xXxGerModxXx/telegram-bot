@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAEtJseKTdLi2fUDN4763tiunXs-5uakDig"
+TOKEN = "7604409638:AAGeakW8PCvYHeIfGchweRUTUmUkxcxZspE"
 BALANCE_FILE = 'обновление/balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -312,9 +312,6 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     level = user_balances.get("уровень", 1)
-    cookies = get_cookies_by_level(level)
-    user_balances["печеньки"] = user_balances.get("печеньки", 0) + cookies
-
     resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
     resources = list(map(int, resources_str.split('/')))
     messages = []
@@ -328,141 +325,115 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
             resources[index] = after
             messages.append(message_text.replace("{count}", str(added)))
 
-    # === Пассивный навык "Железный Голем" ===
-    level_iron_golem = user_balances.get("навыки", {}).get("Железный Голем", 0)
-    if level_iron_golem > 0:
-        extra_chance = level_iron_golem * 10  # +10% за уровень
-        iron_bonus = extra_chance // 100
-        iron_remainder = extra_chance % 100
-        # Гарантированные железки
-        if iron_bonus > 0:
-            try_add_resource(2, iron_bonus, "ж",
-                             f"💪 Железный Голем сработал! +{iron_bonus} железа.")
-        # Вероятностная железка
-        if random.randint(1, 100) <= iron_remainder:
-            try_add_resource(2, 1, "ж",
-                             f"💪 Железный Голем сработал! +1 железо.")
-    # === Пассивный навык "Бесконечное Печенье" ===
-    level_infinite_cookies = user_balances.get("навыки", {}).get("Бесконечное Печенье", 0)
-    if level_infinite_cookies > 0:
-        guaranteed_cookies = min(level_infinite_cookies, 10)  # максимум 10 печенек
-        user_balances["печеньки"] = user_balances.get("печеньки", 0) + guaranteed_cookies
-        messages.append(f"🍪 Навык 'Бесконечное Печенье' подарил тебе {guaranteed_cookies} печенек!")
-
-    # Получаем уровень навыка "Лудоман"
-    level_ludoman = user_balances.get("навыки", {}).get("Лудоман", 0)
-    # Базовое количество печенек по уровню
+    # === Расчёт печенек с учётом навыка "Лудоман" ===
     cookies = get_cookies_by_level(level)
+    level_ludoman = user_balances.get("навыки", {}).get("Лудоман", 0)
     if level_ludoman > 0:
-        # Рассчитываем процент колебания
         fluctuation_percent = 2 * level_ludoman
-        # Считаем случайный множитель от (100 - fluctuation_percent) до (100 + fluctuation_percent) процентов
         min_multiplier = 100 - fluctuation_percent
         max_multiplier = 100 + fluctuation_percent
         multiplier = random.randint(min_multiplier, max_multiplier) / 100
-        # Корректируем количество печенек
         cookies = int(cookies * multiplier)
+
     user_balances["печеньки"] = user_balances.get("печеньки", 0) + cookies
 
-    # Дар природы — шанс на пшеницу с переполнением
+    # === Навык "Бесконечное Печенье" ===
+    level_infinite_cookies = user_balances.get("навыки", {}).get("Бесконечное Печенье", 0)
+    if level_infinite_cookies > 0:
+        guaranteed_cookies = min(level_infinite_cookies, 10)
+        user_balances["печеньки"] += guaranteed_cookies
+        messages.append(f"🍪 Навык 'Бесконечное Печенье' подарил тебе {guaranteed_cookies} печенек!")
+
+    # === Навык "Железный Голем" ===
+    level_iron_golem = user_balances.get("навыки", {}).get("Железный Голем", 0)
+    if level_iron_golem > 0:
+        extra_chance = level_iron_golem * 10
+        iron_bonus = extra_chance // 100
+        iron_remainder = extra_chance % 100
+        if iron_bonus > 0:
+            try_add_resource(2, iron_bonus, "ж", f"💪 Железный Голем сработал! +{iron_bonus} железа.")
+        if random.randint(1, 100) <= iron_remainder:
+            try_add_resource(2, 1, "ж", "💪 Железный Голем сработал! +1 железо.")
+
+    # === Навык "Дар природы" ===
     level_nature_gift = user_balances.get("навыки", {}).get("Дар природы", 0)
     if level_nature_gift > 0:
         chance = 15 * level_nature_gift
         guaranteed = chance // 100
         remainder = chance % 100
-
-        # Добавляем гарантированные пшеницы
         if guaranteed > 0:
             try_add_resource(1, guaranteed, "п", f"🌿 Дар природы сработал! +{guaranteed} пшениц.")
-
-        # Вероятностное добавление
         if random.randint(1, 100) <= remainder:
             try_add_resource(1, 1, "п", f"🌿 Дар природы сработал! +1 пшеница.")
 
+    # === Навык "Глаз Алмаз" ===
     level_eye_diamond = user_balances.get("навыки", {}).get("Глаз Алмаз", 0)
     if level_eye_diamond > 0:
-        chance = level_eye_diamond  # 1% * уровень
+        chance = level_eye_diamond
         if random.randint(1, 100) <= chance:
             try_add_resource(3, 1, "а", f"💎 Глаз Алмаз сработал! +1 алмаз.")
 
-    level_infinite_cookies = user_balances.get("навыки", {}).get("Бесконечное Печенье", 0)
-    if level_infinite_cookies > 0:
-        guaranteed_cookies = min(level_infinite_cookies, 10)  # максимум 10 печенек
-        user_balances["печеньки"] = user_balances.get("печеньки", 0) + guaranteed_cookies
-        messages.append(f"🍪 Навык 'Бесконечное Печенье' подарил тебе {guaranteed_cookies} печенек!")
-
-    # Получаем уровень навыка "Фарм-маньяк"
+    # === Навык "Фарм-маньяк" ===
     level_farm_maniac = user_balances.get("навыки", {}).get("Фарм-маньяк", 0)
     if level_farm_maniac > 0:
         chance = 10 + level_farm_maniac * 5
-        # Исключаем изумруды (index 5)
-        possible_resources = [0, 1, 2, 3, 4]  # какао, пшеница, железо, алмазы, золото
+        possible_resources = [0, 1, 2, 3, 4]
         if random.randint(1, 100) <= chance:
             res_index = random.choice(possible_resources)
             resource_code = list(RESOURCES.keys())[res_index]
             try_add_resource(res_index, 1, resource_code,
                              f"🔥 Фарм-маньяк сработал! +1 {RESOURCES[resource_code]}. (Шанс: {chance}%)")
 
-    # Внутри async def handle_want_cookies(...):
-
+    # === Навык "Удачливый" ===
     level_lucky = user_balances.get("навыки", {}).get("Удачливый", 0)
     if level_lucky > 0:
-        chance = (level_lucky // 5) + 2  # процент шанса
-        amount = (level_lucky // 5) + 1  # количество изумрудов
+        chance = (level_lucky // 5) + 2
+        amount = (level_lucky // 5) + 1
         if random.randint(1, 100) <= chance:
             try_add_resource(5, amount, "и", f"🍀 Навык 'Удачливый' сработал! +{amount} изумруда(ов).")
 
-    # Золото (index 4)
+    # === Шансы на ресурсы по уровню ===
     if level >= 2:
         gold_chance = max(0, 25 - 5 * level)
         if random.randint(1, 100) <= gold_chance:
             try_add_resource(4, 1, "з", f"Вы получили {{count}} золото! (Шанс: {gold_chance}%)")
 
-    # Железо (index 2)
     iron_chance_total = 20 + 5 * level
-    full = iron_chance_total // 100
-    remainder = iron_chance_total % 100
-    iron_count = full
-    if random.randint(1, 100) <= remainder:
+    iron_count = iron_chance_total // 100
+    if random.randint(1, 100) <= (iron_chance_total % 100):
         iron_count += 1
     if iron_count > 0:
         try_add_resource(2, iron_count, "ж", f"Вы получили {{count}} железа! (Шанс: {iron_chance_total}%)")
 
-    # +10 печенек шанс
     if random.randint(1, 100) <= 1:
         user_balances["печеньки"] += 10
-        messages.append("Вы получили 10 дополнительных печенек  ! (Шанс: 1%)")
+        messages.append("Вы получили 10 дополнительных печенек! (Шанс: 1%)")
 
-    # Пшеница (index 1)
     wheat_chance = max(0, 50 - 5 * level)
     if random.randint(1, 100) <= wheat_chance:
         try_add_resource(1, 1, "п", f"Вы получили {{count}} пшеницу! (Шанс: {wheat_chance}%)")
 
-    # Какао-бобы (index 0)
     cocoa_chance = 5
     if random.randint(1, 100) <= cocoa_chance:
         try_add_resource(0, 1, "к", f"Вы получили {{count}} какао-боб! (Шанс: {cocoa_chance}%)")
 
-    # Алмазы (index 3)
     if 2 <= level <= 5:
         diamond_chance = max(0, 30 - 5 * level)
         if random.randint(1, 100) <= diamond_chance:
             try_add_resource(3, 1, "а", f"Вы получили {{count}} алмаз! (Шанс: {diamond_chance}%)")
 
-    # Изумруды (index 5)
     if 1 <= level <= 10:
         emerald_chance = 3
         if random.randint(1, 100) <= emerald_chance:
             try_add_resource(5, 1, "и", f"Вы получили {{count}} изумруд! (Шанс: {emerald_chance}%)")
 
     user_balances["ресурсы"] = "/".join(map(str, resources))
+
     level_eternal_farm = user_balances.get("навыки", {}).get("Вечный Фарм", 0)
-    chance_eternal = min(level_eternal_farm, 20)  # макс 20%
+    chance_eternal = min(level_eternal_farm, 20)
     if level_eternal_farm > 0 and random.randint(1, 100) <= chance_eternal:
-        # Навык сработал — фарм доступен дополнительно, дату не меняем
         messages.append(f"✨ Навык 'Вечный Фарм' сработал! Вы можете фармить ещё раз сегодня.")
     else:
-        # Навык не сработал — фиксируем дату последнего фарма
         user_balances["последний фарм"] = datetime.now().strftime("%H:%M %d-%m-%Y")
 
     balances[username] = user_balances
@@ -1855,7 +1826,7 @@ async def handle_skill_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("• прокачать навык <название>")
     lines.append("• использовать навык <название>")
     lines.append(
-        "💡 Стоимость прокачки навыка: 5 × текущий уровень железа + 10 печенек ")
+        "💡 Стоимость прокачки навыка: (5 × текущий уровень) железа + 10 печенек ")
 
     await update.message.reply_text("\n".join(lines))
 
@@ -2121,6 +2092,8 @@ async def use_skill_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messages.append(f"Навык 'Великий Шахтёр' сработал! Вы получили {iron_gained} железа.")
         else:
             messages.append("Навык 'Великий Шахтёр' не сработал.")
+    elif skill_name == "Фарм-маньяк":
+        messages.append("Навык 'Фарм-маньяк' — пассивный навык, используется при фарме.")
 
     elif skill_name == "Пекарь":
         messages.append("Навык 'Пекарь' — пассивный. Шанс получить +1 печеньку при крафте.")
@@ -2326,10 +2299,10 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"А ты сегодня уже получал Печеньки?")
 
 
-PROMO = "germodlove"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+PROMO = "love"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
 chanse_N = 10
 chanse_balance = 1
-chanse_vezde = 2
+chanse_vezde = 1
 commands_common = {
     "🆕 обнова": "Показать список обновлений",
     "💰 баланс": "Показать текущий баланс и уровень",
