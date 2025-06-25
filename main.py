@@ -204,11 +204,14 @@ from telegram import Message, Update
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# Инициализация (один раз)
-cred = credentials.Certificate("firebase-key.json")
-firebase_admin.initialize_app(cred)
+# Инициализация (в начале файла) — выполняется только один раз
+if not firebase_admin._apps:
+    cred = credentials.Certificate("firebase-key.json")
+    firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 balances_ref = db.collection("balances")
+
 
 # Загрузить все балансы
 def load_balances():
