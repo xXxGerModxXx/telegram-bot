@@ -2474,6 +2474,8 @@ def log_transaction(entry: dict):
 
 
 if __name__ == '__main__':
+    now = datetime.now(timezone.utc)
+    print("[DIAGNOSTIC] Текущая UTC:", now.isoformat())
     # Заглушка Flask — в фоновом потоке
     threading.Thread(target=start_dummy_server, daemon=True).start()
 
