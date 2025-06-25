@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAFFmuzBa--9xWGuRpaiYb78TgZut6GfPeo"
+TOKEN = "7604409638:AAHFrSALESjELw4y5aA-L3fAs8jwdQyzYuo"
 BALANCE_FILE = 'обновление/balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -62,8 +62,7 @@ from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, Con
 
 async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
-    balances = load_balances()
-    user_balances = balances.get(username)
+    user_balances = load_balance(username)
 
     if user_balances is None:
         await update.message.reply_text("Ты ещё не начал приключение. Получи сначала печеньки!")
@@ -123,8 +122,7 @@ async def handle_level_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_balances["уровень"] = current_level + 1
     user_balances["ресурсы"] = "/".join(map(str, resources))
-    balances[username] = user_balances
-    save_balances(balances)
+    save_balance(username, user_balances)
 
     try:
         log_transaction({
@@ -210,15 +208,13 @@ firebase_admin.initialize_app(cred)
 db = firestore.client()
 balances_ref = db.collection("balances")
 
-# Загрузить все балансы
-def load_balances():
-    docs = balances_ref.stream()
-    return {doc.id: doc.to_dict() for doc in docs}
+def load_balance(username: str) -> dict | None:
+    doc = balances_ref.document(username).get()
+    return doc.to_dict() if doc.exists else None
 
-# Сохранить все балансы
-def save_balances(data: dict):
-    for username, fields in data.items():
-        balances_ref.document(username).set(fields)
+def save_balance(username: str, data: dict):
+    balances_ref.document(username).set(data, merge=True)
+
 
 
 
@@ -234,16 +230,16 @@ def get_currency_from_text(text: str) -> str:
 
 async def handle_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
-    balances = load_balances()
-    user_balances = balances.get(username)
+    user_balances = load_balance(username)
 
     if user_balances is None:
-        # Инициализируем нового игрока с уровнем 1 и нулём по валютам
-        user_balances = {"уровень": 1}
-        user_balances.update({curr: 0 for curr in CURRENCIES})
-        user_balances.update({"ресурсы": "0/0/0/0/0/0/0"})  # Добавляем ресурсы
-        balances[username] = user_balances
-        save_balances(balances)  # сохраняем в файл
+        # Инициализируем нового игрока
+        user_balances = {
+            "уровень": 1,
+            **{curr: 0 for curr in CURRENCIES},
+            "ресурсы": "0/0/0/0/0/0/0"
+        }
+        save_balance(username, user_balances)
 
     level = user_balances.get("уровень", 1)
 
@@ -296,16 +292,16 @@ moscow_tz = timezone(timedelta(hours=3))
 
 async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
-    balances = load_balances()
-    user_balances = balances.get(username)
+    user_balances = load_balance(username)
 
     if user_balances is None:
-        user_balances = {"уровень": 1}
-        user_balances.update({curr: 0 for curr in CURRENCIES})
-        user_balances.update({"ресурсы": "0/0/0/0/0/0/0"})
-        user_balances.update({"последний фарм": ""})
-        balances[username] = user_balances
-        save_balances(balances)
+        user_balances = {
+            "уровень": 1,
+            **{curr: 0 for curr in CURRENCIES},
+            "ресурсы": "0/0/0/0/0/0/0",
+            "последний фарм": ""
+        }
+        save_balance(username, user_balances)
 
     last_farm_str = user_balances.get("последний фарм", "")
     if not can_farm_today(last_farm_str):
@@ -430,16 +426,15 @@ async def handle_want_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE
             try_add_resource(5, 1, "и", f"Вы получили {{count}} изумруд! (Шанс: {emerald_chance}%)")
 
     user_balances["ресурсы"] = "/".join(map(str, resources))
-
     level_eternal_farm = user_balances.get("навыки", {}).get("Вечный Фарм", 0)
     chance_eternal = min(level_eternal_farm, 20)
+
     if level_eternal_farm > 0 and random.randint(1, 100) <= chance_eternal:
         messages.append(f"✨ Навык 'Вечный Фарм' сработал! Вы можете фармить ещё раз сегодня.")
     else:
         user_balances["последний фарм"] = datetime.now().strftime("%H:%M %d-%m-%Y")
 
-    balances[username] = user_balances
-    save_balances(balances)
+    save_balance(username, user_balances)
 
     try:
         log_transaction({
@@ -512,15 +507,27 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("Нельзя переводить себе!")
         return
 
-    balances = load_balances()
+    sender_data = load_balance(sender)
+    if sender_data is None:
+        sender_data = {
+            "уровень": 1,
+            **{curr: 0 for curr in CURRENCIES},
+            "ресурсы": "0/0/0/0/0/0/0",
+            "последний фарм": ""
+        }
+        save_balance(sender, sender_data)
 
-    if sender not in balances:
-        balances[sender] = {"уровень": 1, **{curr: 0 for curr in CURRENCIES}, "ресурсы": "0/0/0/0/0/0/0", "последний фарм": ""}
-    if recipient not in balances:
-        balances[recipient] = {"уровень": 1, **{curr: 0 for curr in CURRENCIES}, "ресурсы": "0/0/0/0/0/0/0", "последний фарм": ""}
-
-    sender_balances = balances[sender]
-    recipient_balances = balances[recipient]
+    recipient_data = load_balance(recipient)
+    if recipient_data is None:
+        recipient_data = {
+            "уровень": 1,
+            **{curr: 0 for curr in CURRENCIES},
+            "ресурсы": "0/0/0/0/0/0/0",
+            "последний фарм": ""
+        }
+        save_balance(recipient, recipient_data)
+    sender_balances = load_balance(sender)
+    recipient_balances = load_balance(recipient)
 
     if sender_balances.get(currency, 0) < amount:
         await msg.reply_text(f"Кажется, в мешочке не хватает {currency}.")
@@ -529,7 +536,8 @@ async def handle_give(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_balances[currency] -= amount
     recipient_balances[currency] += amount
 
-    save_balances(balances)
+    save_balance(sender, sender_balances)
+    save_balance(recipient, recipient_balances)
 
     try:
         log_transaction({
@@ -587,12 +595,14 @@ async def handle_give_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     recipient = f"@{recipient_tag}"
-    balances = load_balances()
-    recipient_balances = balances.get(recipient, {curr: 0 for curr in CURRENCIES})
-    recipient_balances[currency] = recipient_balances.get(currency, 0) + amount
-    balances[recipient] = recipient_balances
+    recipient_balances = load_balance(recipient)
 
-    save_balances(balances)
+    if recipient_balances is None:
+        recipient_balances = {curr: 0 for curr in CURRENCIES}
+
+    recipient_balances[currency] = recipient_balances.get(currency, 0) + amount
+
+    save_balance(recipient, recipient_balances)
 
     try:
         log_transaction({
@@ -653,13 +663,15 @@ async def handle_take_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     recipient = f"@{recipient_tag}"
-    balances = load_balances()
-    recipient_balances = balances.get(recipient, {curr: 0 for curr in CURRENCIES})
+    recipient_balances = load_balance(recipient)
+
+    if recipient_balances is None:
+        recipient_balances = {curr: 0 for curr in CURRENCIES}
+
     current = recipient_balances.get(currency, 0)
     recipient_balances[currency] = max(0, current - amount)
-    balances[recipient] = recipient_balances
 
-    save_balances(balances)
+    save_balance(recipient, recipient_balances)
 
     try:
         log_transaction({
@@ -687,21 +699,23 @@ async def handle_save_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_chat_id = 844673891
 
     try:
-        # Загружаем балансы
-        balances = load_balances()
+        # 🔄 Баланс
+        all_docs = balances_ref.stream()
+        balances = {doc.id: doc.to_dict() for doc in all_docs}
         balance_content = json.dumps(balances, ensure_ascii=False, indent=2)
 
-        # Загружаем все уровни из коллекции levels_price (каждый уровень — отдельный документ)
+        # 📈 Цены уровней
         levels_collection = db.collection("levels_price").stream()
         levels_dict = {doc.id: doc.to_dict().get("цена") for doc in levels_collection}
         levels_content = json.dumps(levels_dict, ensure_ascii=False, indent=2)
 
-        # Загружаем лотерею
+        # 🎟️ Лотерея
         lottery = load_lottery_firestore()
         lottery_content = json.dumps(lottery, ensure_ascii=False, indent=2)
 
-        # Перебираем данные и отправляем админу — либо как текст, либо файлом
-        for title, content in [("Баланс", balance_content), ("Цены уровней", levels_content), ("Лотерея", lottery_content)]:
+        # 📤 Отправка администратору
+        for title, content in [("Баланс", balance_content), ("Цены уровней", levels_content),
+                               ("Лотерея", lottery_content)]:
             if len(content) <= 4000:
                 await context.bot.send_message(
                     chat_id=admin_chat_id,
@@ -735,7 +749,8 @@ async def handle_clear_lottery(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def handle_average_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    balances = load_balances()
+    all_docs = balances_ref.stream()
+    balances = {doc.id: doc.to_dict() for doc in all_docs}
     if not balances:
         await update.message.reply_text("Нет данных по балансу.")
         return
@@ -818,7 +833,8 @@ async def handle_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         return  # Ошибка — тоже молчим
 
-    balances = load_balances()
+    all_docs = balances_ref.stream()
+    balances = {doc.id: doc.to_dict() for doc in all_docs}
 
     def clean_username(name):
         return name.lstrip('@')
@@ -990,17 +1006,23 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
         await msg.reply_text("Количество билетов должно быть больше нуля.")
         return
 
-    balances = load_balances()
-    user_bal = balances.get(username, {}).get("печеньки", 0)
+    user_data = load_balance(username)
+    if user_data is None:
+        user_data = {
+            "уровень": 1,
+            **{curr: 0 for curr in CURRENCIES},
+            "ресурсы": "0/0/0/0/0/0/0",
+            "последний фарм": ""
+        }
 
-    if user_bal < count:
+    current_cookies = user_data.get("печеньки", 0)
+    if current_cookies < count:
         await msg.reply_text("В твоём мешочке с Печеньками не хватает :(")
         return
 
     # Вычитаем печеньки
-    balances.setdefault(username, {}).setdefault("печеньки", 0)
-    balances[username]["печеньки"] -= count
-    save_balances(balances)
+    user_data["печеньки"] = current_cookies - count
+    save_balance(username, user_data)
 
     # Загрузка текущих билетов
     lottery = load_lottery_firestore()
@@ -1032,8 +1054,6 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
     updated_lottery = {user: rng for user, rng in ordered}
     save_lottery_firestore(updated_lottery)
 
-
-
     try:
         log_transaction({
             "timestamp": datetime.now(moscow_tz).isoformat(),
@@ -1044,16 +1064,15 @@ async def handle_lottery_purchase(update: Update, context: ContextTypes.DEFAULT_
             "amount": count
         })
     except:
-        pass  # Ошибку лога игнорируем
+        pass
 
     try:
-        if random.randint(1,100)<chanse_N:
-            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец, держи промо: "+ PROMO)
+        if random.randint(1, 100) < chanse_N:
+            await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец, держи промо: {PROMO}")
         else:
             await msg.reply_text(f"{username} купил билеты за {count} печенек 🍪 ай молодец")
     except:
-        pass  # Даже если не ответили — это не критично
-
+        pass
 
 async def handle_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(UPDATE_LOG.strip())
@@ -1112,25 +1131,31 @@ def get_user_resources(username, balances):
     user_data = balances.get(username, {})
     resources_str = user_data.get("ресурсы", "0/0/0/0/0/0/0")
     return list(map(int, resources_str.split('/')))
-def update_user_resources(username, balances, resources):
-    resources_str = '/'.join(map(str, resources))
-    if username not in balances:
-        balances[username] = {}
-    balances[username]["ресурсы"] = resources_str
-    save_balances(balances)
+def update_user_resources(username, resources):
+    user_data = load_balance(username)
+    if user_data is None:
+        user_data = {
+            "уровень": 1,
+            **{curr: 0 for curr in CURRENCIES},
+            "ресурсы": "0/0/0/0/0/0/0",
+            "последний фарм": ""
+        }
+
+    user_data["ресурсы"] = '/'.join(map(str, resources))
+    save_balance(username, user_data)
+def get_user_resources_from_data(user_data: dict) -> list[int]:
+    raw = user_data.get("ресурсы", "0/0/0/0/0/0/0")
+    return list(map(int, raw.split("/")))
+
 async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     text = msg.text.strip()
 
-    # Унифицированная обработка: приведём к нижнему регистру для сравнения
     if not text.lower().startswith("рес дать"):
         await msg.reply_text("Команда должна начинаться с 'рес дать'.")
         return
 
-    # Удалим только самое первое вхождение 'рес дать' (в любом регистре)
     command = re.sub(r'^рес\s+дать', '', text, flags=re.IGNORECASE).strip()
-
-    # Ожидается: <кол-во> <код_ресурса> [@username или ответ]
     match = re.match(r'^(\d+)\s+(\w)', command)
     if not match:
         await msg.reply_text("Неверный формат. Используйте: рес дать <количество> <ресурс> [@имя или ответом]")
@@ -1147,7 +1172,6 @@ async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TY
     sender = get_username_from_message(msg)
     recipient_tag = None
 
-    # Пытаемся найти @username
     recipient_match = re.search(r'@(\w+)', command)
     if recipient_match:
         recipient_tag = recipient_match.group(1)
@@ -1164,18 +1188,21 @@ async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TY
         await msg.reply_text("Нельзя переводить ресурсы самому себе.")
         return
 
-    balances = load_balances()
+    # Загрузка балансов
+    sender_data = load_balance(sender)
+    recipient_data = load_balance(recipient)
 
-    if sender not in balances or recipient not in balances:
+    if sender_data is None or recipient_data is None:
         await msg.reply_text("Один из участников не зарегистрирован.")
         return
 
-    sender_resources = get_user_resources(sender, balances)
-    recipient_resources = get_user_resources(recipient, balances)
+    # Получение и проверка ресурсов
+    sender_resources = get_user_resources_from_data(sender_data)
+    recipient_resources = get_user_resources_from_data(recipient_data)
 
     resource_index = list(RESOURCES.keys()).index(resource_short)
-    sender_level = balances[sender].get("уровень", 1)
-    recipient_level = balances[recipient].get("уровень", 1)
+    sender_level = sender_data.get("уровень", 1)
+    recipient_level = recipient_data.get("уровень", 1)
 
     sender_limit = RESOURCE_LIMITS[resource_short](sender_level)
     recipient_limit = RESOURCE_LIMITS[resource_short](recipient_level)
@@ -1188,14 +1215,12 @@ async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TY
         await msg.reply_text(f"У {recipient} нет места для {amount} {resource_name}.")
         return
 
-    # Передаём ресурсы
+    # Передача ресурсов
     sender_resources[resource_index] -= amount
     recipient_resources[resource_index] += amount
 
-    update_user_resources(sender, balances, sender_resources)
-    update_user_resources(recipient, balances, recipient_resources)
-
-    save_balances(balances)
+    update_user_resources(sender, sender_resources)
+    update_user_resources(recipient, recipient_resources)
 
     try:
         log_transaction({
@@ -1207,7 +1232,7 @@ async def handle_give_resources(update: Update, context: ContextTypes.DEFAULT_TY
             "amount": amount
         })
     except:
-        pass  # лог не должен ломать выполнение
+        pass
 
     await msg.reply_text(f"{sender} перевёл {amount} {resource_name} {recipient}.")
 
@@ -1221,8 +1246,6 @@ async def handle_give_admin_resources(update: Update, context: ContextTypes.DEFA
         return
 
     text = msg.text.strip()
-
-    # Удаляем префикс "рес дар" (в любом регистре и с пробелами)
     command = re.sub(r'^рес\s+дар', '', text, flags=re.IGNORECASE).strip()
 
     match = re.match(r'^(\d+)\s+(\w)', command)
@@ -1240,7 +1263,6 @@ async def handle_give_admin_resources(update: Update, context: ContextTypes.DEFA
     resource_name = RESOURCES[resource_short]
     recipient_tag = None
 
-    # Пытаемся найти @username
     recipient_match = re.search(r'@(\w+)', command)
     if recipient_match:
         recipient_tag = recipient_match.group(1)
@@ -1252,14 +1274,14 @@ async def handle_give_admin_resources(update: Update, context: ContextTypes.DEFA
         return
 
     recipient = f"@{recipient_tag}"
-    balances = load_balances()
+    recipient_data = load_balance(recipient)
 
-    if recipient not in balances:
+    if recipient_data is None:
         await msg.reply_text("Получатель не зарегистрирован.")
         return
 
-    recipient_resources = get_user_resources(recipient, balances)
-    recipient_level = balances[recipient].get("уровень", 1)
+    recipient_resources = get_user_resources_from_data(recipient_data)
+    recipient_level = recipient_data.get("уровень", 1)
 
     resource_index = list(RESOURCES.keys()).index(resource_short)
     recipient_limit = RESOURCE_LIMITS[resource_short](recipient_level)
@@ -1269,8 +1291,7 @@ async def handle_give_admin_resources(update: Update, context: ContextTypes.DEFA
         return
 
     recipient_resources[resource_index] += amount
-    update_user_resources(recipient, balances, recipient_resources)
-    save_balances(balances)
+    update_user_resources(recipient, recipient_resources)
 
     try:
         log_transaction({
@@ -1289,15 +1310,12 @@ async def handle_give_admin_resources(update: Update, context: ContextTypes.DEFA
 
 
 
-
 async def handle_take_admin_resources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg or msg.from_user.username != ADMIN_USERNAME:
         return
 
     text = msg.text.strip()
-
-    # Удаляем префикс "рес отнять" (с учетом регистра и пробелов)
     command = re.sub(r'^рес\s+отнять', '', text, flags=re.IGNORECASE).strip()
 
     match = re.match(r'^(\d+)\s+(\w)', command)
@@ -1315,7 +1333,6 @@ async def handle_take_admin_resources(update: Update, context: ContextTypes.DEFA
     resource_name = RESOURCES[resource_short]
     recipient_tag = None
 
-    # Получатель: @username или ответ на сообщение
     recipient_match = re.search(r'@(\w+)', command)
     if recipient_match:
         recipient_tag = recipient_match.group(1)
@@ -1327,13 +1344,13 @@ async def handle_take_admin_resources(update: Update, context: ContextTypes.DEFA
         return
 
     recipient = f"@{recipient_tag}"
-    balances = load_balances()
+    recipient_data = load_balance(recipient)
 
-    if recipient not in balances:
+    if recipient_data is None:
         await msg.reply_text("Получатель не зарегистрирован.")
         return
 
-    recipient_resources = get_user_resources(recipient, balances)
+    recipient_resources = get_user_resources_from_data(recipient_data)
     resource_index = list(RESOURCES.keys()).index(resource_short)
 
     if recipient_resources[resource_index] < amount:
@@ -1341,8 +1358,7 @@ async def handle_take_admin_resources(update: Update, context: ContextTypes.DEFA
         return
 
     recipient_resources[resource_index] -= amount
-    update_user_resources(recipient, balances, recipient_resources)
-    save_balances(balances)
+    update_user_resources(recipient, recipient_resources)
 
     try:
         log_transaction({
@@ -1358,6 +1374,7 @@ async def handle_take_admin_resources(update: Update, context: ContextTypes.DEFA
 
     await msg.reply_text(f"{recipient} лишился {amount} {resource_name}.")
 
+
 import re
 
 from datetime import datetime, timedelta, timezone
@@ -1370,7 +1387,6 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = msg.text.strip()
-
     match = re.match(
         r'^крафт\s+(\d+)\s+(печенька|печеньки|печенек|золотая печенька|золотых печенек|золотых печеньек|золото)$',
         text, re.IGNORECASE
@@ -1382,19 +1398,14 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
     amount = int(match.group(1))
     craft_raw = match.group(2).lower()
 
-    # Нормализация типа
-    if "золот" in craft_raw or craft_raw == "золото":
-        craft_type = "золотая печенька"
-    else:
-        craft_type = "печенька"
+    craft_type = "золотая печенька" if "золот" in craft_raw or craft_raw == "золото" else "печенька"
 
     username = get_username_from_message(msg)
     if not username:
         await msg.reply_text("Ошибка: не удалось определить пользователя.")
         return
 
-    balances = load_balances()
-    user_balances = balances.get(username)
+    user_balances = load_balance(username)
     if user_balances is None:
         await msg.reply_text("Вы не зарегистрированы. Напишите Баланс для начала.")
         return
@@ -1406,11 +1417,9 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("Ошибка чтения ресурсов. Обратитесь к администратору.")
         return
 
-    # Индексы ресурсов
     try:
         wheat_index = list(RESOURCES.keys()).index("п")
         cocoa_index = list(RESOURCES.keys()).index("к")
-        cookie_index = list(RESOURCES.keys()).index("печенька")
         gold_cookie_index = list(RESOURCES.keys()).index("р")
     except ValueError:
         await msg.reply_text("Ошибка конфигурации ресурсов.")
@@ -1422,6 +1431,7 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         required_wheat = 2 * amount
         required_cocoa = 1 * amount
+        bonus_cookies = 0
 
         if econ_level > 0:
             if 2 <= level < 5:
@@ -1429,12 +1439,8 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif 5 <= level < 10:
                 required_wheat = max(0, required_wheat - 2 * amount)
             elif level >= 10:
-                required_wheat = 0  # не тратим пшеницу
+                required_wheat = 0
                 bonus_cookies = 2 * amount
-            else:
-                bonus_cookies = 0
-        else:
-            bonus_cookies = 0
 
         if resources[wheat_index] < required_wheat or resources[cocoa_index] < required_cocoa:
             await msg.reply_text(f"Не хватает ресурсов для крафта {amount} обычных печенек.")
@@ -1443,18 +1449,14 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resources[wheat_index] -= required_wheat
         resources[cocoa_index] -= required_cocoa
 
-        # Навык "Пекарь"
         skill_level = user_balances.get("навыки", {}).get("Пекарь", 0)
         baked_cookies = amount + bonus_cookies
         if skill_level > 0:
-            chance = 10 * skill_level  # %
-            extra_bonus = 0
-            for _ in range(amount):
-                if random.randint(1, 100) <= chance:
-                    extra_bonus += 1
+            chance = 10 * skill_level
+            extra_bonus = sum(1 for _ in range(amount) if random.randint(1, 100) <= chance)
             baked_cookies += extra_bonus
 
-        resources[cookie_index] += baked_cookies
+        user_balances["печеньки"] = user_balances.get("печеньки", 0) + baked_cookies
 
         try:
             log_transaction({
@@ -1468,30 +1470,29 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
         await msg.reply_text(
-            f"Вы скрафтили {baked_cookies} обычных печенек (включая бонус {bonus_cookies} от навыка 'Пекарь').")
+            f"Вы скрафтили {baked_cookies} обычных печенек (включая бонус {bonus_cookies} от навыка 'Пекарь')."
+        )
 
-    if craft_type == "золотая печенька":
-
+    elif craft_type == "золотая печенька":
         required_wheat = 2 * amount
         required_cocoa = 1 * amount
         required_cookies = 1 * amount
 
         if (
-                resources[wheat_index] < required_wheat or
-                resources[cocoa_index] < required_cocoa or
-                resources[cookie_index] < required_cookies
+            resources[wheat_index] < required_wheat or
+            resources[cocoa_index] < required_cocoa or
+            user_balances.get("печеньки", 0) < required_cookies
         ):
             await msg.reply_text(f"Не хватает ресурсов для крафта {amount} золотых печенек.")
             return
 
         skill_level = user_balances.get("навыки", {}).get("Ювелир", 0)
-        chance = 10 * skill_level  # %
+        chance = 10 * skill_level
 
         def deduct_with_chance(total_needed, resource_index):
             spent = 0
             for _ in range(total_needed):
                 if skill_level > 0 and random.randint(1, 100) <= chance:
-                    # Ресурс не потратился
                     continue
                 resources[resource_index] -= 1
                 spent += 1
@@ -1499,16 +1500,21 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         spent_wheat = deduct_with_chance(required_wheat, wheat_index)
         spent_cocoa = deduct_with_chance(required_cocoa, cocoa_index)
-        spent_cookies = deduct_with_chance(required_cookies, cookie_index)
+
+        spent_cookies = 0
+        for _ in range(required_cookies):
+            if skill_level > 0 and random.randint(1, 100) <= chance:
+                continue
+            user_balances["печеньки"] -= 1
+            spent_cookies += 1
+
         resources[gold_cookie_index] += amount
 
-        # === Навык "Илон Маск" ===
-        level_ilon_musk = user_balances.get("навыки", {}).get("Илон Маск", 0)
-        if level_ilon_musk > 0 and amount >= 3:
-            bonus_cookies = 3 * level_ilon_musk
-            resources[cookie_index] += bonus_cookies
-            await msg.reply_text(
-                f"🚀 Навык 'Илон Маск' сработал! Вы получили дополнительно {bonus_cookies} обычных печенек.")
+        ilon_level = user_balances.get("навыки", {}).get("Илон Маск", 0)
+        if ilon_level > 0 and amount >= 3:
+            bonus_cookies = 3 * ilon_level
+            user_balances["печеньки"] += bonus_cookies
+            await msg.reply_text(f"🚀 Навык 'Илон Маск' сработал! Вы получили дополнительно {bonus_cookies} обычных печенек.")
 
         try:
             log_transaction({
@@ -1527,16 +1533,14 @@ async def handle_craft(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"(навык 'Ювелир' сработал с шансом {chance}%)"
         )
 
-
-
     else:
         await msg.reply_text("Неизвестный тип. Пример: крафт 1 печенька / крафт 1 золотая печенька")
         return
 
-    # Обновление и сохранение
+    # ✅ Сохраняем результат
     user_balances["ресурсы"] = "/".join(map(str, resources))
-    balances[username] = user_balances
-    save_balances(balances)
+    save_balance(username, user_balances)
+
 async def handle_resources_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = """📦 *Ресурсы и формулы выпадения:*
 
@@ -1622,37 +1626,43 @@ async def handle_random_giveaway(update: Update, context: ContextTypes.DEFAULT_T
     player_count = int(match.group(3))
     amount = int(match.group(4))
 
-    balances = load_balances()
+    # Загружаем всех пользователей из Firestore
+    all_docs = balances_ref.stream()
+    all_balances = {doc.id: doc.to_dict() for doc in all_docs}
 
-    # Фильтруем подходящих игроков
+    # Фильтруем кандидатов
     if min_level == 0 and max_level == 0:
-        # Специальный случай — все уровни
         candidates = [
-            user for user, data in balances.items()
+            user for user, data in all_balances.items()
             if user not in excluded_users_Admin and isinstance(data, dict)
         ]
     else:
         candidates = [
-            user for user, data in balances.items()
+            user for user, data in all_balances.items()
             if user not in excluded_users_Admin and isinstance(data, dict)
                and min_level <= data.get("уровень", 1) <= max_level
         ]
 
     if len(candidates) < player_count:
-        await msg.reply_text(f"Недостаточно игроков уровня от {min_level} до {max_level}. Нашли только: {len(candidates)}")
+        await msg.reply_text(
+            f"Недостаточно игроков уровня от {min_level} до {max_level}. Нашли только: {len(candidates)}"
+        )
         return
 
     selected_users = random.sample(candidates, player_count)
+
     for user in selected_users:
-        if user not in balances or not isinstance(balances[user], dict):
-            balances[user] = {
+        user_data = all_balances.get(user)
+        if user_data is None or not isinstance(user_data, dict):
+            user_data = {
                 "уровень": 1,
                 **{curr: 0 for curr in CURRENCIES},
                 "ресурсы": "0/0/0/0/0/0/0",
                 "последний фарм": ""
             }
 
-        balances[user]["печеньки"] = balances[user].get("печеньки", 0) + amount
+        user_data["печеньки"] = user_data.get("печеньки", 0) + amount
+        save_balance(user, user_data)
 
         try:
             log_transaction({
@@ -1666,9 +1676,11 @@ async def handle_random_giveaway(update: Update, context: ContextTypes.DEFAULT_T
         except:
             pass
 
-    save_balances(balances)
     names = ', '.join(selected_users)
-    await msg.reply_text(f"🎉 {amount} 🍪 выданы {player_count} игрокам уровня {min_level}–{max_level}: {names}")
+    await msg.reply_text(
+        f"🎉 {amount} 🍪 выданы {player_count} игрокам уровня {min_level}–{max_level}: {names}"
+    )
+
 
 
 async def handle_ultrahelp_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1705,8 +1717,8 @@ async def debug_log_text(text: str, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_skill_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
-    balances = load_balances()
-    user = balances.get(username)
+    user = load_balance(username)
+
     if not user:
         await update.message.reply_text("Сначала начни приключение!")
         return
@@ -1721,10 +1733,8 @@ async def handle_skill_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         max_lvl = SKILLS.get(name, 10)
         effective_lvl = min(lvl, max_lvl)
 
-        # Стандартное описание
         desc = "Описание не доступно"
 
-        # Индивидуальные вставки по вычисляемым значениям
         if name == "Золотые Руки":
             chance = 10 * effective_lvl
             desc = f"Из 2 пшеницы, 1 какао и 1 золота создаёт 2 золотые печеньки с шансом {chance}%"
@@ -1802,7 +1812,6 @@ async def handle_skill_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             desc = f"{5 * effective_lvl}% шанс улучшить ресурс (ж→п→а→и)"
 
         elif name == "Торговец":
-            # Показываем цены текущего уровня
             prices = {
                 1: {"п": (10, 10), "к": (5, 10), "ж": (20, 10), "з": (10, 10), "а": (2, 10), "и": (2, 10)},
                 2: {"п": (9, 10), "к": (5, 11), "ж": (18, 11), "з": (9, 11), "а": (2, 11), "и": (2, 11)},
@@ -1817,7 +1826,8 @@ async def handle_skill_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
             p = prices.get(effective_lvl)
             if p:
-                desc = "Обмен ресурсов на печеньки:\n" + "\n".join([f"  • {k} → {v[1]} печ. (за {v[0]} шт.)" for k, v in p.items()])
+                desc = "Обмен ресурсов на печеньки:\n" + "\n".join(
+                    [f"  • {k} → {v[1]} печ. (за {v[0]} шт.)" for k, v in p.items()])
             else:
                 desc = "Продаёт ресурсы в печеньки. Цены зависят от уровня."
 
@@ -1827,54 +1837,52 @@ async def handle_skill_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("• получить навык")
     lines.append("• прокачать навык <название>")
     lines.append("• использовать навык <название>")
-    lines.append(
-        "💡 Стоимость прокачки навыка: (5 × текущий уровень) железа + 10 печенек ")
+    lines.append("💡 Стоимость прокачки навыка: (5 × текущий уровень) железа + 10 печенек")
 
     await update.message.reply_text("\n".join(lines))
 
+
 async def handle_get_skill(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = get_username_from_message(update.message)
-    balances = load_balances()
-    user = balances.get(username)
+    user = load_balance(username)
 
     if not user:
         await update.message.reply_text("Ты ещё не начал игру. Сначала начни приключение!")
         return
 
-    # ресурсы — строка вида "печенье/трилистники/железо/золото/бронза/изумруды/что-то_ещё"
-    resources = list(map(int, user.get("ресурсы", "0/0/0/0/0/0/0").split("/")))
+    resources_str = user.get("ресурсы", "0/0/0/0/0/0/0")
+    try:
+        resources = list(map(int, resources_str.split("/")))
+    except ValueError:
+        await update.message.reply_text("Ошибка чтения ресурсов.")
+        return
+
     skills = user.setdefault("навыки", {})
 
-    # Проверка, если уже получены все навыки
     if len(skills) >= len(SKILLS):
         await update.message.reply_text("У тебя уже есть все доступные навыки!")
         return
 
-    # Логика стоимости
     if len(skills) == 0:
-        # Нет навыков — требуются 5 железа
         if resources[2] < 5:
             await update.message.reply_text("Нужно 5 железа для получения первого навыка.")
             return
         resources[2] -= 5
     else:
-        # Есть хотя бы один навык — требуются 5 изумрудов
         if resources[5] < 5:
             await update.message.reply_text("Нужно 5 изумрудов для следующего навыка.")
             return
         resources[5] -= 5
 
-    # Случайный выбор нового навыка
     available_skills = [s for s in SKILLS if s not in skills]
     new_skill = random.choice(available_skills)
     skills[new_skill] = 1
 
-    # Сохраняем обновлённый баланс
     user["ресурсы"] = "/".join(map(str, resources))
-    balances[username] = user
-    save_balances(balances)
+    save_balance(username, user)
 
     await update.message.reply_text(f"Ты получил навык: {new_skill} (ур. 1)")
+
 
 
 SKILLS = {
@@ -1906,27 +1914,20 @@ SKILLS = {
 }
 async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYPE, skill_name: str):
     username = get_username_from_message(update.message)
-    balances = load_balances()
-    user = balances.get(username)
+    user = load_balance(username)
 
     if not user:
         await update.message.reply_text("Ты ещё не начал игру.")
         return
 
-    # Приводим название к нижнему регистру для сопоставления
     skill_name_input = skill_name.strip().lower()
-
-    # Получаем список навыков игрока, приводим к lowercase для проверки
     skills = user.get("навыки", {})
 
-    # Создаём соответствие "нижний_регистр_названия" → "оригинальное название"
     normalized_skills = {k.lower(): k for k in skills}
-
     if skill_name_input not in normalized_skills:
         await update.message.reply_text(f"У тебя нет навыка с названием \"{skill_name}\".")
         return
 
-    # Используем оригинальное название для отображения, но работаем с нормализованным ключом
     original_name = normalized_skills[skill_name_input]
     level = skills[original_name]
     max_level = SKILLS.get(original_name, 10)
@@ -1944,10 +1945,14 @@ async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         return
 
-    resources = list(map(int, user.get("ресурсы", "0/0/0/0/0/0/0").split("/")))
+    try:
+        resources = list(map(int, user.get("ресурсы", "0/0/0/0/0/0/0").split("/")))
+    except ValueError:
+        await update.message.reply_text("Ошибка чтения ресурсов.")
+        return
+
     cookies = user.get("печеньки", 0)
 
-    # Стоимость прокачки
     cost_iron = 5 * level
     cost_cookies = 10
     cost_diamonds = 10 if (level + 1) % 10 == 0 else (5 if (level + 1) % 5 == 0 else 0)
@@ -1961,72 +1966,73 @@ async def handle_upgrade_skill(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         return
 
-    # Списание ресурсов
     resources[2] -= cost_iron
     resources[3] -= cost_diamonds
     cookies -= cost_cookies
 
-    # Прокачка
     skills[original_name] += 1
     user["ресурсы"] = "/".join(map(str, resources))
     user["печеньки"] = cookies
-    balances[username] = user
-    save_balances(balances)
+    save_balance(username, user)
 
     await update.message.reply_text(
         f"Навык {original_name} успешно прокачан до уровня {skills[original_name]}!"
     )
 
 
+
 import random
 from datetime import datetime
 
 async def use_skill_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    username = get_username_from_message(update.message)
-    balances = load_balances()
-    user_balances = balances.get(username)
+    msg = update.message
+    username = get_username_from_message(msg)
+    user_balances = load_balance(username)
 
     if user_balances is None:
-        await update.message.reply_text("Вы не зарегистрированы.")
+        await msg.reply_text("Вы не зарегистрированы.")
         return
 
-    text = update.message.text.strip().lower()
+    text = msg.text.strip()
     parts = text.split(" ", 2)
+    skills = user_balances.get("навыки", {})
 
+    # Определение названия навыка
     if len(parts) < 3:
-        await update.message.reply_text("Укажи название навыка: например, использовать навык Золотые Руки")
+        if len(skills) == 1:
+            skill_name = list(skills.keys())[0]
+        else:
+            await msg.reply_text("Укажи название навыка: например, использовать навык Пекарь")
+            return
+    else:
+        skill_name = parts[2].strip().lower().title()
+
+    skill_level = skills.get(skill_name, 0)
+    if skill_level <= 0:
+        await msg.reply_text(f"Навык '{skill_name}' не прокачан или не получен.")
         return
 
-    skill_name = parts[2].strip().title()  # Делает 'золотые руки' → 'Золотые Руки'
-    skills = user_balances.get("навыки", {})
-    skill_level = skills.get(skill_name, 0)
-
-    if skill_level <= 0:
-        await update.message.reply_text(f"Навык '{skill_name}' не прокачан или не получен.")
+    # Подготовка ресурсов
+    try:
+        resources = list(map(int, user_balances.get("ресурсы", "0/0/0/0/0/0/0").split("/")))
+    except ValueError:
+        await msg.reply_text("Ошибка чтения ресурсов.")
         return
 
     messages = []
-    resources_str = user_balances.get("ресурсы", "0/0/0/0/0/0/0")
-    resources = list(map(int, resources_str.split("/")))
+    res_codes = {"к": 0, "п": 1, "ж": 2, "а": 3, "з": 4, "и": 5}
 
     def save_resources():
         user_balances["ресурсы"] = "/".join(map(str, resources))
 
     def check_resources(reqs: dict) -> bool:
-        res_codes = {"к": 0, "п": 1, "ж": 2, "а": 3, "з": 4, "и": 5}
-        for rcode, amount in reqs.items():
-            if resources[res_codes[rcode]] < amount:
-                return False
-        return True
+        return all(resources[res_codes[r]] >= amt for r, amt in reqs.items())
 
     def deduct_resources(reqs: dict):
-        res_codes = {"к": 0, "п": 1, "ж": 2, "а": 3, "з": 4, "и": 5}
-        for rcode, amount in reqs.items():
-            resources[res_codes[rcode]] -= amount
+        for r, amt in reqs.items():
+            resources[res_codes[r]] -= amt
 
-    # ====== ПРИМЕРЫ НАВЫКОВ ======
-    messages = []
-
+    # === НАВЫКИ ===
     if skill_name == "Золотые Руки":
         effective_level = min(skill_level, 10)
         reqs = {"п": 2, "к": 1, "з": 1}
@@ -2043,23 +2049,21 @@ async def use_skill_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             messages.append("Недостаточно ресурсов для навыка 'Золотые Руки'. Нужно: 2 пшеницы, 1 какао-боб, 1 золото.")
 
     elif skill_name == "Железный Голем":
-        messages.append("Навык 'Железный Голем' пассивный и не требует использования.")
+        messages.append("Навык 'Железный Голем' — пассивный, не требует использования.")
 
     elif skill_name == "Бесконечное Печенье":
-        last_bonus = user_balances.get("бесконечное_печенье_дата", "")
         today_str = datetime.now().strftime("%d-%m-%Y")
+        last_bonus = user_balances.get("бесконечное_печенье_дата", "")
         if last_bonus != today_str:
             user_balances["печеньки"] = user_balances.get("печеньки", 0) + skill_level
             user_balances["бесконечное_печенье_дата"] = today_str
             messages.append(f"Навык 'Бесконечное Печенье' активирован! Вам начислено {skill_level} печенек.")
         else:
-            messages.append("Вы уже получили бонус от навыка 'Бесконечное Печенье' сегодня.")
+            messages.append("Сегодня вы уже использовали 'Бесконечное Печенье'.")
 
     elif skill_name == "Лудоман":
         current_cookies = user_balances.get("печеньки", 0)
-        max_change = int(current_cookies * 0.02 * skill_level)
-        if max_change == 0:
-            max_change = skill_level
+        max_change = max(int(current_cookies * 0.02 * skill_level), skill_level)
         change = random.randint(-max_change, max_change)
         user_balances["печеньки"] = max(0, current_cookies + change)
         messages.append(f"Навык 'Лудоман' сработал! Баланс печенек изменился на {change:+}.")
@@ -2069,79 +2073,39 @@ async def use_skill_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if resources[2] >= cost:
             resources[2] -= cost
             resources[4] += 1
-            messages.append(f"Навык 'Золотоискатель' активирован! Вы обменяли {cost} железа на 1 золото.")
+            messages.append(f"Навык 'Золотоискатель' активирован! Потрачено {cost} железа, получено 1 золото.")
         else:
-            messages.append(f"Недостаточно железа для обмена. Нужно {cost} железа.")
+            messages.append(f"Недостаточно железа. Нужно {cost} железа.")
 
     elif skill_name == "Великий Дар":
         reqs = {"ж": 50 - skill_level, "з": 20 - skill_level, "а": 10, "п": 10, "к": 10}
         if check_resources(reqs):
             deduct_resources(reqs)
             resources[5] += 1
-            messages.append("Навык 'Великий Дар' активирован! Вы создали 1 изумруд.")
+            messages.append("Навык 'Великий Дар' активирован! Получен 1 изумруд.")
         else:
-            messages.append("Недостаточно ресурсов для 'Великого Дара'. Требуется много ресурсов.")
+            messages.append("Недостаточно ресурсов для 'Великого Дара'.")
 
     elif skill_name == "Великий Шахтёр":
         chance = 20 * skill_level
-        guaranteed = chance // 100
-        remainder = chance % 100
-        iron_gained = guaranteed
-        if random.randint(1, 100) <= remainder:
-            iron_gained += 1
-        if iron_gained > 0:
-            resources[2] += iron_gained
-            messages.append(f"Навык 'Великий Шахтёр' сработал! Вы получили {iron_gained} железа.")
+        gained = chance // 100 + (1 if random.randint(1, 100) <= (chance % 100) else 0)
+        if gained:
+            resources[2] += gained
+            messages.append(f"Навык 'Великий Шахтёр' сработал! Получено {gained} железа.")
         else:
             messages.append("Навык 'Великий Шахтёр' не сработал.")
-    elif skill_name == "Фарм-маньяк":
-        messages.append("Навык 'Фарм-маньяк' — пассивный навык, используется при фарме.")
-
-    elif skill_name == "Пекарь":
-        messages.append("Навык 'Пекарь' — пассивный. Шанс получить +1 печеньку при крафте.")
-
-    elif skill_name == "Ювелир":
-        messages.append("Навык 'Ювелир' — пассивный. Шанс не потратить ресурс при крафте золотой печеньки.")
-
-    elif skill_name == "Дар природы":
-        messages.append("Навык 'Дар природы' — пассивный. Увеличивает шанс на пшеницу при фарме.")
-
-    elif skill_name == "Глаз Алмаз":
-        messages.append("Навык 'Глаз Алмаз' — пассивный. Увеличивает шанс на алмаз при фарме.")
 
     elif skill_name == "Селянин":
-        emerald_index = 5
-        gold_index = 4
-        iron_index = 2
-        if resources[emerald_index] >= 1:
-            resources[emerald_index] -= 1
+        if resources[5] >= 1:
+            resources[5] -= 1
             gold_amount = skill_level // 3
             iron_amount = 10 + skill_level
-            # Предположим RESOURCE_LIMITS - словарь с функциями лимитов
-            def get_limit(code):
-                return RESOURCE_LIMITS[code](user_balances.get("уровень", 1))
-            gold_limit = get_limit("з")
-            iron_limit = get_limit("ж")
-            resources[gold_index] = min(resources[gold_index] + gold_amount, gold_limit)
-            resources[iron_index] = min(resources[iron_index] + iron_amount, iron_limit)
-            messages.append(f"Навык 'Селянин' сработал! Ты обменял 1 изумруд на {gold_amount} золота и {iron_amount} железа.")
+            def get_limit(code): return RESOURCE_LIMITS[code](user_balances.get("уровень", 1))
+            resources[4] = min(resources[4] + gold_amount, get_limit("з"))
+            resources[2] = min(resources[2] + iron_amount, get_limit("ж"))
+            messages.append(f"Навык 'Селянин' сработал! Получено {gold_amount} золота и {iron_amount} железа.")
         else:
-            messages.append("Недостаточно изумрудов для обмена.")
-
-    elif skill_name == "Фортуна":
-        messages.append("Навык 'Фортуна' — пассивный. Удваивает награду за фарм с шансом (3*уровень)%.")
-
-    elif skill_name == "Удачливый":
-        messages.append("Навык 'Удачливый' — пассивный. Увеличивает шанс получить изумруд при фарме.")
-
-    elif skill_name == "Илон Маск":
-        messages.append("Навык 'Илон Маск' — пассивный. Даёт бонусные обычные печеньки при крафте золотых.")
-
-    elif skill_name == "Изобретатель":
-        messages.append("Навык 'Изобретатель' — пассивный. Есть шанс создать новый случайный ресурс при крафте.")
-
-    elif skill_name == "вечный фарм":
-        messages.append("Навык 'вечный фарм' — пассивный. Позволяет второй фарм с шансом.")
+            messages.append("Недостаточно изумрудов для использования навыка 'Селянин'.")
 
     elif skill_name == "Торговец":
         prices = {
@@ -2156,28 +2120,27 @@ async def use_skill_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             9: {"п": (5, 15), "к": (3, 16), "ж": (10, 16), "з": (5, 16), "а": (2, 16), "и": (2, 16)},
             10: {"п": (4, 16), "к": (3, 16), "ж": (10, 16), "з": (4, 16), "а": (2, 17), "и": (2, 17)},
         }
-        lvl = min(skill_level, 10)
-        current_prices = prices.get(lvl, prices[10])
-        res_codes = {"к": 0, "п": 1, "ж": 2, "а": 3, "з": 4, "и": 5}
-        affordable_resources = []
-        for res, (req_amount, cookie_amount) in current_prices.items():
-            res_index = res_codes[res]
-            if resources[res_index] >= req_amount:
-                affordable_resources.append((res, req_amount, cookie_amount))
-        if affordable_resources:
-            res, req_amount, cookie_amount = random.choice(affordable_resources)
-            res_index = res_codes[res]
-            resources[res_index] -= req_amount
-            user_balances["печеньки"] = user_balances.get("печеньки", 0) + cookie_amount
-            messages.append(f"Навык 'Торговец' активирован! Продано {req_amount} {res} за {cookie_amount} печенек.")
+        level_prices = prices.get(skill_level, prices[10])
+        available = [(r, *level_prices[r]) for r in level_prices if resources[res_codes[r]] >= level_prices[r][0]]
+        if available:
+            r, cost, cookies = random.choice(available)
+            resources[res_codes[r]] -= cost
+            user_balances["печеньки"] = user_balances.get("печеньки", 0) + cookies
+            messages.append(f"Навык 'Торговец': обмен {cost} {r} на {cookies} печенек.")
         else:
             messages.append("Недостаточно ресурсов для продажи через 'Торговца'.")
 
-    else:
-        messages.append(f"Навык '{skill_name}' пока не реализован.")
+    elif skill_name in [
+        "Фарм-маньяк", "Пекарь", "Ювелир", "Дар природы", "Глаз Алмаз",
+        "Фортуна", "Удачливый", "Илон Маск", "Изобретатель", "вечный фарм"
+    ]:
+        messages.append(f"Навык '{skill_name}' — пассивный. Он работает автоматически.")
 
-    save_resources()
-    return "\n".join(messages)
+    else:
+        messages.append(f"Навык '{skill_name}' не реализован или неизвестен.")
+
+    save_balance(username, user_balances)
+    await msg.reply_text("\n".join(messages))
 
 
 async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2277,10 +2240,24 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_get_skill(update, context)
     elif lower_text.startswith("прокачать навык"):
         parts = lower_text.split(" ", 2)
+        username = get_username_from_message(update.message)
+        user = load_balance(username)
+
+        if user is None:
+            await update.message.reply_text("Ты ещё не начал игру.")
+            return
+
+        skills = user.get("навыки", {})
+
         if len(parts) < 3:
-            await update.message.reply_text("Укажи название навыка после команды. Например:\nпрокачать навык Пекарь")
+            if len(skills) == 1:
+                skill_name = list(skills.keys())[0]
+                await handle_upgrade_skill(update, context, skill_name)
+            else:
+                await update.message.reply_text(
+                    "Укажи название навыка после команды. Например:\nпрокачать навык Пекарь")
         else:
-            skill_name = parts[2].strip()
+            skill_name = parts[2].strip().lower().title()
             await handle_upgrade_skill(update, context, skill_name)
 
     elif lower_text == "использовать навык" or lower_text == "юзануть навык" or lower_text == "юз навык" or lower_text == "юз навыка":
@@ -2301,7 +2278,7 @@ async def main_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"А ты сегодня уже получал Печеньки?")
 
 
-PROMO = "love"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
+PROMO = "ggkatka"# ✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅ПРОМОКОД✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅✅
 chanse_N = 10
 chanse_balance = 1
 chanse_vezde = 1
