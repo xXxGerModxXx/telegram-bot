@@ -27,7 +27,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 # 🔑 Конфиги
-TOKEN = "7604409638:AAGGL_mFO7NFcGiGRZw_-lhioQih9NG4IDs"
+TOKEN = "7604409638:AAGy1KLRWZUqWNdt9rdYTmANcd6RZ37-j68"
 BALANCE_FILE = 'обновление/balances.json'
 ADMIN_USERNAME = "hto_i_taki"  # без @
 
@@ -204,14 +204,11 @@ from telegram import Message, Update
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# Инициализация (в начале файла) — выполняется только один раз
-if not firebase_admin._apps:
-    cred = credentials.Certificate("firebase-key.json")
-    firebase_admin.initialize_app(cred)
-
+# Инициализация (один раз)
+cred = credentials.Certificate("firebase-key.json")
+firebase_admin.initialize_app(cred)
 db = firestore.client()
 balances_ref = db.collection("balances")
-
 
 # Загрузить все балансы
 def load_balances():
